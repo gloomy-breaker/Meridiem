@@ -113,6 +113,8 @@ const api = {
   > => ipcRenderer.invoke('ws:search', query),
   wsSave: (payload: { relPath: string; title: string; icon: string; body: string }): Promise<boolean> => ipcRenderer.invoke('ws:save', payload),
   wsCreate: (payload: { parentRel: string | null; title: string }): Promise<WorkspacePage | null> => ipcRenderer.invoke('ws:create', payload),
+  /** Open (or create) `Daily/YYYY-MM-DD.md` and return it. */
+  wsDaily: (date: string): Promise<WorkspacePage | null> => ipcRenderer.invoke('ws:daily', date),
   wsDelete: (relPath: string): Promise<boolean> => ipcRenderer.invoke('ws:delete', relPath),
   wsResolveLink: (linkText: string, fromDir?: string): Promise<WorkspacePage | null> => ipcRenderer.invoke('ws:resolve-link', linkText, fromDir),
   wsAllPages: (): Promise<{ relPath: string; title: string; icon: string }[]> => ipcRenderer.invoke('ws:all-pages'),

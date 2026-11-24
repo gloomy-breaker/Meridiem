@@ -119,6 +119,8 @@ export interface Api {
   >
   wsSave: (payload: { relPath: string; title: string; icon: string; body: string }) => Promise<boolean>
   wsCreate: (payload: { parentRel: string | null; title: string }) => Promise<WorkspacePage | null>
+  /** Open (or create) `Daily/YYYY-MM-DD.md` and return it. */
+  wsDaily: (date: string) => Promise<WorkspacePage | null>
   wsDelete: (relPath: string) => Promise<boolean>
   wsResolveLink: (linkText: string, fromDir?: string) => Promise<WorkspacePage | null>
   wsAllPages: () => Promise<{ relPath: string; title: string; icon: string }[]>

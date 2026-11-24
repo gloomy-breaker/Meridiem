@@ -15,6 +15,14 @@ import { createNewTabPane, type NewTabItem } from './newtab'
 import { createQuizPane } from './quiz-pane'
 import { parseQz } from './qz'
 import { countText, formatCount, type CountMode } from './word-count'
+import {
+  collectDailyNotes,
+  renderDailyList,
+  setupCalendar,
+  todayKey,
+  type CalendarHandle,
+  type DailyNote
+} from './calendar'
 
 // Fonts live in ./fonts.ts (shared with the settings modal).
 
@@ -68,6 +76,11 @@ const imagePaneEl = document.getElementById('image-pane') as HTMLElement
 const imageViewEl = document.getElementById('image-view') as HTMLImageElement
 const imageStageEl = document.getElementById('image-stage') as HTMLElement
 const wordCountEl = document.getElementById('word-count') as HTMLElement
+const statWordsEl = document.getElementById('stat-words') as HTMLElement
+const statCharsEl = document.getElementById('stat-chars') as HTMLElement
+const statLinesEl = document.getElementById('stat-lines') as HTMLElement
+const statReadEl = document.getElementById('stat-read') as HTMLElement
+const pageStatusEl = document.getElementById('page-status') as HTMLElement
 
 // ---- state ----
 let currentPage: { relPath: string; absolutePath: string; title: string; icon: string; body: string; dirRel: string } | null = null
@@ -87,7 +100,21 @@ function paintWordCount(text: string, selected: string): void {
   const total = countText(text, countMode)
   // A collapsed caret is not a selection: it reports the page's own count.
   const sel = selected === '' ? null : countText(selected, countMode)
+  // Keep the old footer string in the DOM (hidden) — it is the a11y-friendly
+  // sentence, while the floating pill shows the four numbers at a glance.
   wordCountEl.textContent = total === 0 && sel === null ? '' : formatCount(total, sel, countMode)
+
+  const chars = [...text.replace(/\r/g, '').replace(/\n/g, '')].length
+  const lines = text === '' ? 0 : text.split('\n').length
+  const readable = countMode === 'asian' ? Math.round(chars / 400) : Math.round(total / 200)
+  const readMinutes = total === 0 ? 0 : Math.max(1, readable)
+  const nf = (n: number): string => n.toLocaleString('en-US')
+  statWordsEl.textContent = nf(sel ?? total)
+  statCharsEl.textContent = nf(chars)
+  statLinesEl.textContent = nf(lines)
+  statReadEl.textContent = total === 0 ? '0 min' : `${readMinutes} min`
+  pageStatusEl.title = sel === null ? '' : `${sel.toLocaleString('en-US')} selected of ${total.toLocaleString('en-US')}`
+  pageStatusEl.hidden = total === 0 && sel === null
 }
 
 function setCountMode(mode: CountMode): void {
@@ -1718,22 +1745,86 @@ async function refreshTree(): Promise<void> {
       else void openRel(rel, kind, newTab === true)
     }
   })
+  refreshDailySurfaces()
+}
+
+// ---- daily notes & the sidebar mini-calendar ----
+let calendarHandle: CalendarHandle | null = null
+let dailyNotes: DailyNote[] = []
+
+/** Repaint the Daily list and the month grid from the current workspace tree. */
+function refreshDailySurfaces(): void {
+  dailyNotes = collectDailyNotes(lastRoot)
+  const panel = document.getElementById('daily-panel')
+  if (panel) {
+    renderDailyList(panel, dailyNotes, {
+      onOpen: (note) => void openRel(note.relPath, 'page'),
+      onCreateToday: () => void openDaily(todayKey())
+    })
+  }
+  if (!calendarHandle) {
+    const mount = document.getElementById('mini-calendar')
+    if (mount) {
+      calendarHandle = setupCalendar(mount, {
+        onPick: (date) => void openDaily(date),
+        onToday: () => void openDaily(todayKey())
+      })
+    }
+  } else {
+    calendarHandle.refresh()
+  }
+}
+
+/** Open `Daily/YYYY-MM-DD.md`, creating it if it does not exist yet. */
+async function openDaily(date: string): Promise<void> {
+  const page = await window.api.wsDaily(date)
+  if (!page) return
+  await refreshTree()
+  await openRel(page.relPath, 'page')
+}
+
+// ---- sidebar view strip (Files / Daily / Agent) ----
+type SidebarView = 'files' | 'daily' | 'agent'
+let sidebarView: SidebarView = 'files'
+
+function paintSidebarView(view: SidebarView): void {
+  for (const btn of Array.from(document.querySelectorAll<HTMLElement>('.viewstrip-btn'))) {
+    btn.classList.toggle('is-active', btn.dataset.sideView === view)
+  }
+}
+
+function setSidebarView(view: SidebarView): void {
+  const files = document.getElementById('files-view')
+  const daily = document.getElementById('daily-panel')
+  const agent = document.getElementById('agent-panel') as HTMLElement | null
+  sidebarView = view
+  if (files) files.hidden = view === 'daily'
+  if (daily) daily.hidden = view !== 'daily'
+  if (view === 'daily') refreshDailySurfaces()
+  if (view === 'agent') {
+    if (agent?.hidden) toggleAgentPanel()
+  } else if (agent && !agent.hidden) {
+    toggleAgentPanel()
+  }
+  paintSidebarView(view)
 }
 
 // ---- theme / fonts ----
-let themeId = 'light'
+let themeId = 'octarineDark'
 function syncThemeSelect(): void {
   const el = document.getElementById('theme-select') as HTMLSelectElement | null
   if (el) el.value = themeId
 }
 
 function setTheme(id: string): void {
-  themeId = id
   const theme = applyTheme(id)
+  // An id from a retired theme falls back to Octarine; remember the resolved id
+  // so the picker shows the theme actually on screen (and the next save keeps it).
+  themeId = theme.id
   codeEditor.setTheme(theme.kind)
   textEditor?.setTheme(theme.kind)
   syncThemeSelect()
-  void window.api.setSettings('theme', id)
+  void window.api.setSettings('theme', theme.id)
 }
 function cycleTheme(): void {
   setTheme(nextTheme(themeId).id)
@@ -2172,6 +2263,11 @@ function toggleAgentPanel(): void {
   ;(document.getElementById('toggle-agent-btn') as HTMLElement).classList.toggle('active', !panel.hidden)
   // A hidden panel must not leave its popovers behind.
   if (panel.hidden) agentPanel?.dismissFloats()
+  // Closing the agent from the titlebar returns the sidebar strip to Files.
+  if (panel.hidden && sidebarView === 'agent') {
+    sidebarView = 'files'
+    paintSidebarView('files')
+  }
   void window.api.setSettings('agentOpen', !panel.hidden)
 }
 
@@ -3406,16 +3502,11 @@ function stepFind(delta: number): void {
   scrollToFindMatch()
 }
 
-/** Sit just under the chrome rows (command bar → tabs → breadcrumbs). */
+/** The find bar lives in the breadcrumb card, which sits directly under the
+ *  38px titlebar; its offsetParent is that card, so a small inset is all it
+ *  needs. (The old code measured the removed command bar's viewport offset.) */
 function placeFindBar(): void {
-  const cmd = document.getElementById('top-command') as HTMLElement | null
-  const tabs = document.getElementById('tab-bar') as HTMLElement | null
-  const crumb = document.getElementById('crumb-bar') as HTMLElement | null
-  let top = 8
-  if (cmd && !cmd.hidden) top = cmd.offsetTop + cmd.offsetHeight + 4
-  if (tabs && !tabs.hidden) top = tabs.offsetTop + tabs.offsetHeight + 4
-  if (crumb && !crumb.hidden) top = crumb.offsetTop + crumb.offsetHeight + 6
-  findBarEl.style.top = top + 'px'
+  findBarEl.style.top = '6px'
 }
 
 /** Hand focus back to the document. The find bar and search modal steal focus
@@ -3679,6 +3770,7 @@ themeSelectEl.addEventListener('change', () => {
 function setSidebarOpen(open: boolean, persist = true): void {
   ;(document.getElementById('sidebar') as HTMLElement).hidden = !open
   ;(document.getElementById('sidebar-resizer') as HTMLElement).hidden = !open
+  document.getElementById('toggle-sidebar-btn')?.classList.toggle('active', open)
   if (persist) void window.api.setSettings('sidebarOpen', open)
 }
 
@@ -3706,6 +3798,62 @@ window.addEventListener('keydown', (e) => {
 document.getElementById('toggle-sidebar-btn')!.addEventListener('click', () => {
   const sb = document.getElementById('sidebar') as HTMLElement
   setSidebarOpen(sb.hidden as boolean)
+})
+
+// ---- Octarine titlebar, sidebar views, quick search, focus mode ----
+document.getElementById('quick-search-btn')!.addEventListener('click', () => openSearch())
+document.getElementById('titlebar-new-note')!.addEventListener('click', () => void createNewPage(null))
+document.getElementById('view-files')!.addEventListener('click', () => setSidebarView('files'))
+document.getElementById('view-daily')!.addEventListener('click', () => setSidebarView('daily'))
+document.getElementById('view-agent')!.addEventListener('click', () => {
+  setSidebarView(sidebarView === 'agent' ? 'files' : 'agent')
+})
+
+// ⌘K and ⌘P both open the workspace palette, the two shortcuts people already
+// reach for. The tree's own filter stays available in the Files view.
+window.addEventListener('keydown', (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return
+  const key = e.key.toLowerCase()
+  if (key === 'k' || key === 'p') {
+    e.preventDefault()
+    openSearch()
+  }
+})
+
+let focusMode = false
+let focusRestore: { sidebar: boolean; agent: boolean } | null = null
+
+function toggleFocusMode(): void {
+  const sidebar = document.getElementById('sidebar') as HTMLElement
+  const sideResizer = document.getElementById('sidebar-resizer') as HTMLElement
+  const agent = document.getElementById('agent-panel') as HTMLElement
+  const agentResizer = document.getElementById('agent-resizer') as HTMLElement
+  focusMode = !focusMode
+  if (focusMode) {
+    focusRestore = { sidebar: !sidebar.hidden, agent: !agent.hidden }
+    sidebar.hidden = true
+    sideResizer.hidden = true
+    agent.hidden = true
+    agentResizer.hidden = true
+    agentPanel?.dismissFloats()
+  } else if (focusRestore) {
+    sidebar.hidden = !focusRestore.sidebar
+    sideResizer.hidden = !focusRestore.sidebar
+    agent.hidden = !focusRestore.agent
+    agentResizer.hidden = !focusRestore.agent
+    focusRestore = null
+  }
+  document.body.classList.toggle('focus-mode', focusMode)
+  document.getElementById('focus-mode-btn')!.classList.toggle('active', focusMode)
+  document.getElementById('toggle-sidebar-btn')!.classList.toggle('active', !sidebar.hidden)
+}
+document.getElementById('focus-mode-btn')!.addEventListener('click', () => toggleFocusMode())
+window.addEventListener('keydown', (e) => {
+  // ⌘. is the Mac "cancel" gesture and should leave focus mode from anywhere.
+  if ((e.metaKey || e.ctrlKey) && e.key === '.') {
+    e.preventDefault()
+    if (focusMode) toggleFocusMode()
+  }
 })
 
 
@@ -3896,6 +4044,7 @@ async function initWorkspace(): Promise<void> {
         void openRel(rel, kind, newTab === true)
       }
     })
+    refreshDailySurfaces()
     const firstRel = findFirstPage(tree)
     const restored = await restoreTabs(tabsByWorkspace.get(base))
     if (!restored && firstRel) {
@@ -3957,7 +4106,7 @@ async function init(): Promise<void> {
     const v = settings[key]
     return v === undefined || v === null ? fallback : (v as T)
   }
-  const savedTheme = res.theme ?? 'light'
+  const savedTheme = res.theme ?? 'octarineDark'
   setTheme(savedTheme)
   applyPreviewFont(res.previewFont ?? 'default')
   applyRenderSize(setting('renderFontSize', 'm'))
@@ -4258,6 +4407,9 @@ async function init(): Promise<void> {
   })
   await onboarding.maybeShow()
   buildThemeSelect()
+  // The calendar is chrome, not workspace content: draw it even before a folder
+  // is open so the sidebar always has its footing.
+  refreshDailySurfaces()
   const savedSplitRatio = settings['splitRatio'] as number | undefined
   if (typeof savedSplitRatio === 'number' && savedSplitRatio > 0.2 && savedSplitRatio < 0.8) {
     splitRatio = savedSplitRatio

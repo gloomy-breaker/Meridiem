@@ -166,7 +166,7 @@ async function createWindow(): Promise<BrowserWindow> {
     // bar stacking a second bar above the app's own. The top strip of both
     // columns is the drag handle — see the app-region rules in styles.css.
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 16 },
+    trafficLightPosition: { x: 16, y: 12 },
     backgroundColor: themeBackground(theme),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -932,6 +932,27 @@ function registerWorkspaceHandlers(): void {
     const root = getWorkspace()
     if (!root) return null
     return createPage(root, payload.parentRel, payload.title)
+  })
+  // Daily notes are loose `Daily/YYYY-MM-DD.md` files rather than folder pages:
+  // a day is a leaf, and a year of folders would drown the tree. Kept here
+  // because it is the one place allowed to create the Daily folder on demand.
+  ipcMain.handle('ws:daily', async (_e, date: unknown) => {
+    const root = getWorkspace()
+    if (!root) return null
+    const clean = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? date
+      : new Date().toISOString().slice(0, 10)
+    const relPath = `Daily/${clean}.md`
+    const abs = join(root, relPath)
+    await fsMkdir(join(root, 'Daily'), { recursive: true })
+    try {
+      const existing = await readPage(abs, relPath)
+      if (existing) return existing
+    } catch {
+      /* not created yet */
+    }
+    await savePage(abs, clean, '', '')
+    return { relPath, absolutePath: abs, title: clean, icon: '', body: '' }
   })
   ipcMain.handle('ws:convert-loose', async (_e, relPath: string) => {
     const root = getWorkspace()

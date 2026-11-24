@@ -78,7 +78,7 @@ export interface Settings {
 const DEFAULTS: Settings = {
   workspace: null,
   workspaces: [],
-  theme: 'light',
+  theme: 'octarineDark',
   previewFont: 'default',
   agentProvider: 'anthropic',
   agentModel: '',
@@ -86,7 +86,7 @@ const DEFAULTS: Settings = {
   agentThinking: 'max',
   sidebarOpen: true,
   agentOpen: false,
-  sidebarWidth: 248,
+  sidebarWidth: 240,
   agentWidth: 380,
   treeMode: 'links',
   pageMode: 'continuous',

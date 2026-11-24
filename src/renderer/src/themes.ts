@@ -5,262 +5,175 @@ export interface ThemeDef {
   vars: Record<string, string>
 }
 
+/** Shared warm shadows: never a cold blue-grey, always a breath of brown. */
+const DARK_SHADOWS = {
+  '--shadow-sm': '0 1px 2px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.18)',
+  '--shadow-md': '0 4px 14px rgba(0, 0, 0, 0.34), 0 1px 4px rgba(0, 0, 0, 0.22)',
+  '--shadow-lg': '0 20px 56px rgba(0, 0, 0, 0.52), 0 6px 18px rgba(0, 0, 0, 0.3)',
+  '--shadow-popover': '0 14px 38px rgba(0, 0, 0, 0.46), 0 3px 10px rgba(0, 0, 0, 0.26)',
+  '--shadow-focus': '0 0 0 2.5px rgba(217, 119, 66, 0.32)'
+}
+
+const LIGHT_SHADOWS = {
+  '--shadow-sm': '0 1px 2px rgba(62, 48, 34, 0.05), 0 1px 3px rgba(62, 48, 34, 0.04)',
+  '--shadow-md': '0 4px 14px rgba(62, 48, 34, 0.09), 0 1px 4px rgba(62, 48, 34, 0.05)',
+  '--shadow-lg': '0 20px 56px rgba(62, 48, 34, 0.18), 0 6px 18px rgba(62, 48, 34, 0.08)',
+  '--shadow-popover': '0 14px 38px rgba(62, 48, 34, 0.16), 0 3px 10px rgba(62, 48, 34, 0.07)',
+  '--shadow-focus': '0 0 0 2.5px rgba(200, 100, 50, 0.22)'
+}
+
+/**
+ * Octarine — the app's visual system.
+ *
+ * Two themes only, both warm and low-contrast: a dark room lit by one amber
+ * lamp, and the same room in daylight on paper. The palette is deliberately
+ * narrow. Structure comes from three neutral surfaces (sidebar, canvas,
+ * elevated) and one hairline; the single saturated colour is terracotta and it
+ * is reserved for things you can act on. Nothing here is pure black or pure
+ * white.
+ */
 export const THEMES: ThemeDef[] = [
   {
-    id: 'light',
-    label: 'Light (GitHub)',
-    kind: 'light',
-    vars: {
-      '--bg': '#f6f8fa',
-      '--panel-bg': '#ffffff',
-      '--text': '#1f2328',
-      '--muted': '#59636e',
-      '--accent': '#0969da',
-      '--border': '#d1d9e0',
-      '--code-bg': '#f6f8fa',
-      '--code-text': '#1f2328',
-      '--quote-bg': '#f6f8fa',
-      '--quote-border': '#d1d9e0',
-      '--selection': 'rgba(9, 105, 218, 0.2)',
-      '--cursor': '#0969da',
-      '--active-line': 'rgba(9, 105, 218, 0.05)',
-      '--md-heading': '#1f2328',
-      '--md-strong': '#1f2328',
-      '--md-em': '#1f2328',
-      '--md-link': '#0969da',
-      '--md-url': '#8250df',
-      '--md-quote': '#59636e',
-      '--md-list': '#1f2328',
-      '--md-meta': '#59636e',
-      '--md-keyword': '#0969da',
-      '--md-code': '#cf222e',
-      '--divider-bg': '#e6e8eb'
-    }
-  },
-  {
-    id: 'dark',
-    label: 'Dark (Terminal)',
+    id: 'octarineDark',
+    label: 'Octarine Dark',
     kind: 'dark',
     vars: {
-      // The shell is darker than the page: #1e1e1e on #1e1e1e made the
-      // navigation, the AI panel and the paper one flat block.
+      // Surfaces
       '--bg': '#141414',
-      '--panel-bg': '#1e1e1e',
-      '--text': '#d4d4d4',
-      '--muted': '#9d9d9d',
-      '--accent': '#4ec9b0',
-      '--border': '#3c3c3c',
-      '--code-bg': '#252526',
-      '--code-text': '#d4d4d4',
-      '--quote-bg': '#252526',
-      '--quote-border': '#4e4e4e',
-      '--selection': 'rgba(212, 212, 212, 0.25)',
-      '--cursor': '#d4d4d4',
-      '--active-line': 'rgba(255, 255, 255, 0.06)',
-      '--md-heading': '#e6e6e6',
-      '--md-strong': '#e6e6e6',
-      '--md-em': '#d4d4d4',
-      '--md-link': '#4ec9b0',
-      '--md-url': '#4ec9b0',
-      '--md-quote': '#9d9d9d',
-      '--md-list': '#e6e6e6',
-      '--md-meta': '#8c8c8c',
-      '--md-keyword': '#4ec9b0',
-      '--md-code': '#ce9178',
-      '--divider-bg': '#3c3c3c'
+      '--panel-bg': '#191919',
+      '--sidebar-bg': '#141414',
+      '--agent-bg': '#141414',
+      '--surface-elevated': '#242424',
+      '--paper': '#191919',
+      '--card-bg': '#191919',
+      '--canvas': '#191919',
+      '--elevated': '#242424',
+      '--app-bg': '#141414',
+      '--control-bg': '#242424',
+      '--control-hover': '#2b2a27',
+      '--control-text': '#e6e5e3',
+      '--field-bg': '#222120',
+      '--field-line': '#2c2a27',
+      '--glass': 'rgba(30, 29, 27, 0.86)',
+
+      // Text
+      '--text': '#e6e5e3',
+      '--text-2': '#d4d2cd',
+      '--muted': '#8a8986',
+      '--muted-2': '#a6a49f',
+      '--muted-3': '#6b6a66',
+
+      // Accent & status — one warm colour, softly used
+      '--accent': '#d97742',
+      '--accent-soft': 'rgba(217, 119, 66, 0.13)',
+      '--accent-soft-2': 'rgba(217, 119, 66, 0.22)',
+      '--accent-ink': '#1b1310',
+      '--ok': '#7fa06a',
+      '--warn': '#d8a14a',
+      '--danger': '#cf6f5c',
+      '--user-bubble': '#2b2723',
+
+      // Lines & fills
+      '--border': '#282828',
+      '--border-strong': '#343434',
+      '--hairline': '#282828',
+      '--code-bg': '#201f1e',
+      '--code-text': '#e6e5e3',
+      '--hover-bg': 'rgba(230, 229, 227, 0.055)',
+      '--active-bg': 'rgba(230, 229, 227, 0.085)',
+      '--selected-bg': 'rgba(217, 119, 66, 0.2)',
+
+      // Editor
+      '--selection': 'rgba(217, 119, 66, 0.26)',
+      '--cursor': '#e6e5e3',
+      '--md-heading': '#efece7',
+      '--md-strong': '#f2efea',
+      '--md-em': '#e6e5e3',
+      '--md-link': '#d97742',
+      '--md-url': '#c99566',
+      '--md-quote': '#a6a49f',
+      '--md-list': '#e6e5e3',
+      '--md-meta': '#8a8986',
+      '--md-keyword': '#d97742',
+      '--md-code': '#d9a06b',
+      '--quote-bg': '#1d1c1b',
+      '--quote-border': '#33312e',
+      '--divider-bg': '#282828',
+      ...DARK_SHADOWS
     }
   },
   {
-    id: 'githubDark',
-    label: 'Dark (GitHub)',
-    kind: 'dark',
-    vars: {
-      // GitHub's own dark canvas: near-black shell (#010409) with #0d1117
-      // cards. #1f2328 read as grey next to the real thing.
-      '--bg': '#010409',
-      '--panel-bg': '#0d1117',
-      '--text': '#e6edf3',
-      '--muted': '#9198a1',
-      '--accent': '#4493f8',
-      '--border': '#30363d',
-      '--code-bg': '#161b22',
-      '--code-text': '#e6edf3',
-      '--quote-bg': '#161b22',
-      '--quote-border': '#30363d',
-      '--selection': 'rgba(68, 147, 248, 0.3)',
-      '--cursor': '#58a6ff',
-      '--active-line': 'rgba(68, 147, 248, 0.1)',
-      '--md-heading': '#f2f5f8',
-      '--md-strong': '#f2f5f8',
-      '--md-em': '#e6edf3',
-      '--md-link': '#4493f8',
-      '--md-url': '#a371f7',
-      '--md-quote': '#9198a1',
-      '--md-list': '#f2f5f8',
-      '--md-meta': '#9198a1',
-      '--md-keyword': '#4493f8',
-      '--md-code': '#ff7b72',
-      '--divider-bg': '#21262d'
-    }
-  },
-  {
-    id: 'plainWhite',
-    label: 'Plain White',
+    id: 'octarineLight',
+    label: 'Octarine Light',
     kind: 'light',
     vars: {
-      '--bg': '#ffffff',
-      '--panel-bg': '#ffffff',
-      '--text': '#000000',
-      '--muted': '#666666',
-      '--accent': '#000000',
-      '--border': '#000000',
-      '--code-bg': '#ffffff',
-      '--code-text': '#000000',
-      '--quote-bg': '#ffffff',
-      '--quote-border': '#000000',
-      '--selection': 'rgba(0, 0, 0, 0.15)',
-      '--cursor': '#000000',
-      '--active-line': 'rgba(0, 0, 0, 0.05)',
-      '--md-heading': '#000000',
-      '--md-strong': '#000000',
-      '--md-em': '#000000',
-      '--md-link': '#000000',
-      '--md-url': '#000000',
-      '--md-quote': '#000000',
-      '--md-list': '#000000',
-      '--md-meta': '#000000',
-      '--md-keyword': '#000000',
-      '--md-code': '#000000',
-      '--divider-bg': '#000000'
-    }
-  },
-  {
-    id: 'plainBlack',
-    label: 'Plain Black',
-    kind: 'dark',
-    vars: {
-      '--bg': '#000000',
-      '--panel-bg': '#000000',
-      '--text': '#ffffff',
-      '--muted': '#999999',
-      '--accent': '#ffffff',
-      '--border': '#ffffff',
-      '--code-bg': '#000000',
-      '--code-text': '#ffffff',
-      '--quote-bg': '#000000',
-      '--quote-border': '#ffffff',
-      '--selection': 'rgba(255, 255, 255, 0.2)',
-      '--cursor': '#ffffff',
-      '--active-line': 'rgba(255, 255, 255, 0.08)',
-      '--md-heading': '#ffffff',
-      '--md-strong': '#ffffff',
-      '--md-em': '#ffffff',
-      '--md-link': '#ffffff',
-      '--md-url': '#ffffff',
-      '--md-quote': '#ffffff',
-      '--md-list': '#ffffff',
-      '--md-meta': '#ffffff',
-      '--md-keyword': '#ffffff',
-      '--md-code': '#ffffff',
-      '--divider-bg': '#ffffff'
-    }
-  },
-  {
-    id: 'sepia',
-    label: 'Sepia',
-    kind: 'light',
-    vars: {
-      '--bg': '#f4ecd8',
-      '--panel-bg': '#faf3e3',
-      '--text': '#5b4636',
-      '--muted': '#8a7a68',
-      '--accent': '#a0522d',
-      '--border': '#e0d3b5',
-      '--code-bg': '#efe6cd',
-      '--code-text': '#5b4636',
-      '--quote-bg': '#efe6cd',
-      '--quote-border': '#d4b98c',
-      '--selection': 'rgba(160, 82, 45, 0.2)',
-      '--cursor': '#a0522d',
-      '--active-line': 'rgba(160, 82, 45, 0.07)',
-      '--md-heading': '#4a3728',
-      '--md-strong': '#4a3728',
-      '--md-em': '#5b4636',
-      '--md-link': '#a0522d',
-      '--md-url': '#8b4513',
-      '--md-quote': '#8a7a68',
-      '--md-list': '#4a3728',
-      '--md-meta': '#8a7a68',
-      '--md-keyword': '#a0522d',
-      '--md-code': '#8b4513',
-      '--divider-bg': '#e8dcc0'
-    }
-  },
-  {
-    id: 'ocean',
-    label: 'Ocean',
-    kind: 'dark',
-    vars: {
-      '--bg': '#0b1e2d',
-      '--panel-bg': '#0f2637',
-      '--text': '#d8e6ee',
-      '--muted': '#6d93a8',
-      '--accent': '#4fc3f7',
-      '--border': '#1f3a4d',
-      '--code-bg': '#0a1b28',
-      '--code-text': '#d8e6ee',
-      '--quote-bg': '#0a1b28',
-      '--quote-border': '#1f3a4d',
-      '--selection': 'rgba(79, 195, 247, 0.3)',
-      '--cursor': '#4fc3f7',
-      '--active-line': 'rgba(79, 195, 247, 0.08)',
-      '--md-heading': '#eaf6ff',
-      '--md-strong': '#eaf6ff',
-      '--md-em': '#d8e6ee',
-      '--md-link': '#4fc3f7',
-      '--md-url': '#81d4fa',
-      '--md-quote': '#6d93a8',
-      '--md-list': '#eaf6ff',
-      '--md-meta': '#6d93a8',
-      '--md-keyword': '#4fc3f7',
-      '--md-code': '#80d8ff',
-      '--divider-bg': '#153046'
-    }
-  },
-  {
-    id: 'forest',
-    label: 'Forest',
-    kind: 'light',
-    vars: {
-      '--bg': '#f2f5ee',
-      '--panel-bg': '#fbfcf8',
-      '--text': '#2d3a2c',
-      '--muted': '#7a8a76',
-      '--accent': '#3f7d3e',
-      '--border': '#d7e0d2',
-      '--code-bg': '#eef3e9',
-      '--code-text': '#2d3a2c',
-      '--quote-bg': '#eef3e9',
-      '--quote-border': '#a9c49c',
-      '--selection': 'rgba(63, 125, 62, 0.2)',
-      '--cursor': '#3f7d3e',
-      '--active-line': 'rgba(63, 125, 62, 0.07)',
-      '--md-heading': '#243020',
-      '--md-strong': '#243020',
-      '--md-em': '#2d3a2c',
-      '--md-link': '#3f7d3e',
-      '--md-url': '#2f6d2e',
-      '--md-quote': '#7a8a76',
-      '--md-list': '#243020',
-      '--md-meta': '#7a8a76',
-      '--md-keyword': '#3f7d3e',
-      '--md-code': '#2f6d2e',
-      '--divider-bg': '#e0e7da'
+      // Surfaces
+      '--bg': '#f3f1ec',
+      '--panel-bg': '#faf9f6',
+      '--sidebar-bg': '#f3f1ec',
+      '--agent-bg': '#f3f1ec',
+      '--surface-elevated': '#eae7e0',
+      '--paper': '#faf9f6',
+      '--card-bg': '#faf9f6',
+      '--canvas': '#faf9f6',
+      '--elevated': '#eae7e0',
+      '--app-bg': '#f3f1ec',
+      '--control-bg': '#eae7e0',
+      '--control-hover': '#e3dfd7',
+      '--control-text': '#1f1f1e',
+      '--field-bg': '#f0ede7',
+      '--field-line': '#e4e1da',
+      '--glass': 'rgba(250, 249, 246, 0.86)',
+
+      // Text
+      '--text': '#1f1f1e',
+      '--text-2': '#35342f',
+      '--muted': '#787671',
+      '--muted-2': '#5f5d58',
+      '--muted-3': '#a8a49b',
+
+      // Accent & status
+      '--accent': '#c86432',
+      '--accent-soft': 'rgba(200, 100, 50, 0.1)',
+      '--accent-soft-2': 'rgba(200, 100, 50, 0.18)',
+      '--accent-ink': '#fffaf5',
+      '--ok': '#5c8a4c',
+      '--warn': '#b47d24',
+      '--danger': '#b85442',
+      '--user-bubble': '#2b2723',
+
+      // Lines & fills
+      '--border': '#e4e1da',
+      '--border-strong': '#d9d5cc',
+      '--hairline': '#e4e1da',
+      '--code-bg': '#efede6',
+      '--code-text': '#2b2a26',
+      '--hover-bg': 'rgba(31, 31, 30, 0.05)',
+      '--active-bg': 'rgba(31, 31, 30, 0.085)',
+      '--selected-bg': 'rgba(200, 100, 50, 0.15)',
+
+      // Editor
+      '--selection': 'rgba(200, 100, 50, 0.2)',
+      '--cursor': '#1f1f1e',
+      '--md-heading': '#1f1f1e',
+      '--md-strong': '#151514',
+      '--md-em': '#1f1f1e',
+      '--md-link': '#c86432',
+      '--md-url': '#a05a35',
+      '--md-quote': '#5f5d58',
+      '--md-list': '#1f1f1e',
+      '--md-meta': '#787671',
+      '--md-keyword': '#c86432',
+      '--md-code': '#a9552b',
+      '--quote-bg': '#f4f1ea',
+      '--quote-border': '#e0dcd3',
+      '--divider-bg': '#e4e1da',
+      ...LIGHT_SHADOWS
     }
   }
 ]
 
-export const DEFAULT_THEME = 'light'
+export const DEFAULT_THEME = 'octarineDark'
 
 export function getTheme(id: string): ThemeDef {
   return THEMES.find((t) => t.id === id) ?? THEMES.find((t) => t.id === DEFAULT_THEME)!
@@ -272,9 +185,9 @@ export function nextTheme(currentId: string): ThemeDef {
 }
 
 // ---- derived tokens -------------------------------------------------------
-// Themes only define the base palette; the richer design-system tokens
-// (hover fills, accent tints, agent surfaces…) are derived so every theme
-// works everywhere in the app.
+// Themes define the palette; these tokens are computed so any future theme gets
+// the same hierarchy for free. Anything a theme states explicitly wins, which is
+// how Octarine pins its three surfaces exactly.
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '')
   const v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
@@ -300,22 +213,15 @@ function luminance(hex: string): number {
 }
 
 function deriveTokens(v: Record<string, string>): Record<string, string> {
-  const bg = v['--bg'] ?? '#ffffff'
-  const panel = v['--panel-bg'] ?? '#ffffff'
-  const text = v['--text'] ?? '#000000'
-  const muted = v['--muted'] ?? '#888888'
-  const accent = v['--accent'] ?? '#0969da'
-  const border = v['--border'] ?? '#e0e0e0'
-  const codeBg = v['--code-bg'] ?? bg
+  const bg = v['--bg'] ?? '#141414'
+  const panel = v['--panel-bg'] ?? '#191919'
+  const text = v['--text'] ?? '#e6e5e3'
+  const muted = v['--muted'] ?? '#8a8986'
+  const accent = v['--accent'] ?? '#d97742'
+  const border = v['--border'] ?? '#282828'
+  const codeBg = v['--code-bg'] ?? panel
   const isDark = luminance(bg) < 0.5
   const backdrop = isDark ? mixHex(bg, '#000000', 0.4) : mixHex(bg, '#000000', 0.055)
-  // A card in a dark theme is told apart from the backdrop it floats on by how
-  // much lighter it is, not by a 1px outline. Two of the eight themes define a
-  // panel that never clears that backdrop — Plain Black's panel *is* the
-  // backdrop, GitHub Dark's is within a few points of it — and those were the
-  // two that needed a line drawn round every card. Derive a panel that clears
-  // it instead, and the line can go: the paper is a surface you can see, or it
-  // is nothing, and nothing the theme can define is worth an outline.
   const clear = (color: string): string => {
     const [r1, g1, b1] = hexToRgb(color)
     const [r2, g2, b2] = hexToRgb(backdrop)
@@ -326,50 +232,33 @@ function deriveTokens(v: Record<string, string>): Record<string, string> {
     '--text-2': text,
     '--muted-2': muted,
     '--muted-3': mixHex(muted, panel, 0.45),
-    // The two side panels are one surface. They used to be derived
-    // independently, so a theme could give the navigator and the agent panel
-    // two different tints — which read as a mistake, not as hierarchy.
+    // The navigator and the agent panel are one material. They share a surface
+    // with the window's own background so the document feels like the only
+    // object in the room.
     '--sidebar-bg': bg,
     '--agent-bg': bg,
     '--surface-elevated': panel,
-    '--hover-bg': rgba(text, 0.045),
-    '--active-bg': rgba(text, 0.075),
-    '--accent-soft': rgba(accent, 0.1),
-    '--accent-soft-2': rgba(accent, 0.18),
-    // In dark themes a bubble filled with the (light) text colour glares; use a
-    // lifted surface instead so sent messages stay readable but calm.
-    '--accent-ink': isDark
-      ? text
-      : luminance(accent) > 0.6
-        ? '#000000'
-        : '#ffffff',
+    '--canvas': panel,
+    '--paper': isDark ? clear(panel) : panel,
+    '--card-bg': panel,
+    '--elevated': mixHex(panel, text, isDark ? 0.09 : 0.06),
+    '--app-bg': backdrop,
+    '--hover-bg': rgba(text, isDark ? 0.055 : 0.045),
+    '--active-bg': rgba(text, isDark ? 0.085 : 0.075),
+    '--accent-soft': rgba(accent, 0.12),
+    '--accent-soft-2': rgba(accent, 0.2),
+    '--accent-ink': isDark ? '#1b1310' : '#fffaf5',
     '--user-bubble': isDark ? mixHex(panel, text, 0.16) : text,
     '--selected-bg': v['--selection'] ?? rgba(accent, 0.15),
-    '--border-strong': mixHex(border, text, 0.25),
+    '--border-strong': mixHex(border, text, 0.22),
+    '--hairline': border,
     '--code-bg-elevated': codeBg,
-    // Card-on-backdrop shell (the PPT redesign): panels float on a slightly
-    // darker backdrop; controls sit on a soft fill inside the cards.
-    '--app-bg': backdrop,
-    '--card-bg': panel,
-    // Paper and glass: every surface is one of two things. The paper holds your
-    // notes and is opaque; the glass acts on them and is the same colour at low
-    // alpha, so the chrome takes its tint from the backdrop behind it instead
-    // of being a flat fill. Nothing is drawn between them — the paper is a
-    // surface because it clears the backdrop, and a surface that needs an
-    // outline to be seen was never a surface. Derived, so all eight themes get
-    // the rule with no per-theme work.
-    '--paper': isDark ? clear(panel) : panel,
-    '--glass': rgba(panel, isDark ? 0.72 : 0.78),
-    '--control-bg': isDark ? mixHex(bg, panel, 0.45) : mixHex(bg, panel, 0.62),
-    '--control-hover': isDark ? mixHex(bg, panel, 0.7) : mixHex(bg, panel, 0.82),
+    '--glass': rgba(panel, isDark ? 0.82 : 0.84),
+    '--control-bg': isDark ? mixHex(panel, text, 0.07) : mixHex(bg, panel, 0.62),
+    '--control-hover': isDark ? mixHex(panel, text, 0.12) : mixHex(bg, panel, 0.82),
     '--control-text': isDark ? text : mixHex(text, panel, 0.12),
-    // A field's resting fill. Controls used to be told apart by a 1px outline
-    // rather than by their fill, because --control-bg is derived from the page
-    // and panel colours and in the light themes those are within a few points
-    // of each other. Deriving from the text colour instead gives a fill that is
-    // legibly a fill in every theme, so nothing needs an outline.
-    '--field-bg': rgba(text, isDark ? 0.07 : 0.045),
-    '--field-line': rgba(text, isDark ? 0.14 : 0.09)
+    '--field-bg': rgba(text, isDark ? 0.06 : 0.035),
+    '--field-line': rgba(text, isDark ? 0.12 : 0.075)
   }
 }
 
@@ -377,7 +266,7 @@ export function applyTheme(id: string): ThemeDef {
   const theme = getTheme(id)
   const root = document.documentElement
   root.style.colorScheme = theme.kind === 'dark' ? 'dark' : 'light'
-  const all = { ...theme.vars, ...deriveTokens(theme.vars) }
+  const all = { ...deriveTokens(theme.vars), ...theme.vars }
   for (const [key, value] of Object.entries(all)) {
     root.style.setProperty(key, value)
   }
