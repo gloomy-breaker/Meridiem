@@ -7,9 +7,11 @@ import { join } from 'node:path'
 // Must happen before any electron-store instance is created. The YESTION_*
 // name is still accepted so existing dev scripts keep working.
 const userDataOverride = process.env.MERIDIEM_USER_DATA ?? process.env.YESTION_USER_DATA
-if (userDataOverride) {
-  app.setPath('userData', userDataOverride)
-}
+// Pin the folder to the product name. Electron's very early default can still
+// be the package name (`meridiem`) while the running app later reports
+// `Meridiem`; without this, the same launch can end up with two case-variant
+// data folders and settings split between them.
+app.setPath('userData', userDataOverride ?? join(app.getPath('appData'), 'Meridiem'))
 
 /**
  * One-time migration from the Yestion-era user-data folder.
