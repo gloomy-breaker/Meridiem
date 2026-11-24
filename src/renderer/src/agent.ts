@@ -1453,7 +1453,7 @@ export function setupAgentPanel(opts: AgentPanelOpts): {
     input.value = ''
     addMsg('user', c.cmd + (arg ? ' ' + arg : ''))
     // A rejected command used to become an unhandled rejection that only showed
-    // up in yestion.log, while the panel printed a success message anyway.
+    // up in meridiem.log, while the panel printed a success message anyway.
     try {
       await c.run(arg)
     } catch (err) {
@@ -1721,7 +1721,7 @@ export function setupAgentPanel(opts: AgentPanelOpts): {
     showTyping(true)
     try {
       // Keys come from ~/.pi/agent/auth.json via the shared ModelRuntime; a
-      // Yestion-level key is only an optional override.
+      // Meridiem-level key is only an optional override.
       try {
         // Make sure the agent is attached to the conversation on screen before
         // every prompt. main reuses a live session, so this is one cheap call.

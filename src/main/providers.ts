@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Providers & models — Yestion's own configuration.
+// Providers & models — Meridiem's own configuration.
 //
 // This replaces "read whatever pi happens to have configured". The app owns a
 // list of providers (name, base URL, wire protocol, API key) and the models

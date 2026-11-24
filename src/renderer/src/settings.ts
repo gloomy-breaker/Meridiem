@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Settings — workspace, providers & keys, models, agent.
 //
-// Providers and models are Yestion's own configuration (see src/main/providers.ts):
+// Providers and models are Meridiem's own configuration (see src/main/providers.ts):
 // each provider has a base URL, a wire protocol and a keychain-stored API key;
 // each model belongs to a provider and carries its id, context window and the
 // inputs it accepts. pi is generated from this, so the app never shows a

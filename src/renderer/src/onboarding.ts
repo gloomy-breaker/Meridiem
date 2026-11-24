@@ -3,7 +3,7 @@
 //
 // One screen, one provider, one model: base URL, protocol, key, model id,
 // model name. That is everything the agent needs to start, and nothing about
-// it depends on software already installed on the machine — Yestion talks to
+// it depends on software already installed on the machine — Meridiem talks to
 // the endpoint directly (through its own main process) and stores the key in
 // the macOS keychain.
 // ---------------------------------------------------------------------------
@@ -198,7 +198,7 @@ export function setupOnboarding(opts: OnboardingOpts): { maybeShow: () => Promis
         status.textContent = 'Could not save: ' + String((err as Error)?.message ?? err)
       } finally {
         startBtn.disabled = false
-        startBtn.textContent = 'Start using Yestion'
+        startBtn.textContent = 'Start using Meridiem'
       }
     })()
   })

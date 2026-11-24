@@ -254,7 +254,7 @@ export async function listWorkspace(root: string): Promise<WorkspaceChild> {
 }
 
 // ---- dedicated workspaces ----
-// A Yestion workspace is a folder we created, marked with
+// A Meridiem workspace is a folder we created, marked with
 // .yestion/workspace.json. Arbitrary folders can't be opened.
 
 export const WORKSPACE_MARKER = '.yestion/workspace.json'

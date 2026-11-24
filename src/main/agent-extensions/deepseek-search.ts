@@ -5,7 +5,7 @@
  *   - `deepseek_search` -> POST {base}/v1/tools/search
  *   - `deepseek_fetch`  -> POST {base}/v1/tools/fetch
  *
- * This file is inlined into Yestion's main bundle (`?raw`) and written into the
+ * This file is inlined into Meridiem's main bundle (`?raw`) and written into the
  * app's agent dir at session start, where pi's DefaultResourceLoader discovers
  * `<agentDir>/extensions/*.ts` like any other extension. It is app-owned: edits
  * made in `<userData>/agent/extensions/deepseek-search.ts` are overwritten on the
@@ -23,7 +23,7 @@
  *   2. $DEEPSEEK_API_KEY
  *   3. auth.json -> { "deepseek": { "key": "..." } }, looked up in:
  *        $DEEPSEEK_SEARCH_AUTH_FILE
- *        $YESTION_AGENT_DIR/auth.json   (set by the Yestion app: userData/agent)
+ *        $YESTION_AGENT_DIR/auth.json   (set by the Meridiem app: userData/agent)
  *        $PI_CODING_AGENT_DIR/auth.json (default ~/.pi/agent/auth.json)
  *
  * Base URL: $DEEPSEEK_SEARCH_BASE_URL, else the `deepseek` provider's baseUrl from
@@ -132,7 +132,7 @@ class DeepSeekApiError extends Error {
 
 /**
  * Config dirs to search, most specific first. `YESTION_AGENT_DIR` is set by the
- * Yestion desktop app (its provider store lives in `userData/agent`, not `~/.pi/agent`).
+ * Meridiem desktop app (its provider store lives in `userData/agent`, not `~/.pi/agent`).
  */
 function configDirs(): string[] {
 	const dirs = [process.env.DEEPSEEK_SEARCH_AGENT_DIR, process.env.YESTION_AGENT_DIR, getAgentDir()]
@@ -230,7 +230,7 @@ function resolveApiKey(): string {
 	if (!key) {
 		throw new Error(
 			`No DeepSeek API key found. Set DEEPSEEK_SEARCH_API_KEY (or DEEPSEEK_API_KEY), ` +
-				`add a DeepSeek key in Yestion's Settings → Models, or add a "deepseek" key to one of: ` +
+				`add a DeepSeek key in Meridiem's Settings → Models, or add a "deepseek" key to one of: ` +
 				`${authFilePaths().join(", ")}.`,
 		);
 	}

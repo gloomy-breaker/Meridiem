@@ -1,13 +1,45 @@
 import { app } from 'electron'
-import { promises as fs } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdirSync, promises as fs } from 'node:fs'
 import { join } from 'node:path'
 
 // Dev/test isolation: a second copy of the app can run against throwaway state
 // (its own settings + workspace) without disturbing the real installation.
-// Must happen before any electron-store instance is created.
-if (process.env.YESTION_USER_DATA) {
-  app.setPath('userData', process.env.YESTION_USER_DATA)
+// Must happen before any electron-store instance is created. The YESTION_*
+// name is still accepted so existing dev scripts keep working.
+const userDataOverride = process.env.MERIDIEM_USER_DATA ?? process.env.YESTION_USER_DATA
+if (userDataOverride) {
+  app.setPath('userData', userDataOverride)
 }
+
+/**
+ * One-time migration from the Yestion-era user-data folder.
+ *
+ * The app id/name changed with the Meridiem rebrand, so Electron now points
+ * `userData` at a new folder. The user's workspace list and provider setup
+ * should not disappear just because the product was renamed. Copy only the
+ * durable app state (settings, agent config, private-workspace keys), never the
+ * caches. The workspace folders themselves are untouched.
+ */
+function migrateLegacyUserData(): void {
+  const current = app.getPath('userData')
+  const legacy = join(app.getPath('appData'), 'yestion')
+  if (current === legacy) return
+  if (existsSync(join(current, 'settings.json'))) return
+  if (!existsSync(join(legacy, 'settings.json'))) return
+  try {
+    mkdirSync(current, { recursive: true })
+    copyFileSync(join(legacy, 'settings.json'), join(current, 'settings.json'))
+    for (const dir of ['agent', 'vaults']) {
+      const from = join(legacy, dir)
+      if (existsSync(from)) cpSync(from, join(current, dir), { recursive: true })
+    }
+  } catch (err) {
+    // A failed migration must never stop the app from booting; the user simply
+    // starts with defaults and can re-add the workspace.
+    console.error('Failed to migrate Yestion user data', err)
+  }
+}
+migrateLegacyUserData()
 
 /** A workspace the user has added to the switcher. */
 export interface WorkspaceEntry {

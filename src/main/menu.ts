@@ -20,7 +20,7 @@ export function buildAppMenu(_onNewWindow: () => void, onCommand: (cmd: string) 
     ...(isMac
       ? [
           {
-            label: app.name,
+            label: 'Meridiem',
             submenu: [
               { role: 'about' as const },
               { type: 'separator' as const },
@@ -131,11 +131,11 @@ export function buildAppMenu(_onNewWindow: () => void, onCommand: (cmd: string) 
     {
       role: 'help',
       submenu: [
-        { label: `Yestion ${app.getVersion()}`, enabled: false },
+        { label: `Meridiem ${app.getVersion()}`, enabled: false },
         { type: 'separator' },
-        // Was a dead "Yestion on GitHub" item pointing at https://github.com/.
+        // Was a dead "Meridiem on GitHub" item pointing at https://github.com/.
         // Nobody has a repo URL for this build, so the Help menu does something
-        // real instead: open the folder holding settings and yestion.log.
+        // real instead: open the folder holding settings and meridiem.log.
         {
           label: 'Open App Data Folder',
           click: () => void shell.openPath(app.getPath('userData'))

@@ -1,7 +1,7 @@
-# Packaging for Yestion (electron-builder).
+# Packaging for Meridiem (electron-builder).
 #
 # Targets:
-#   npm run dist:mac      → dist/Yestion-<version>-arm64.dmg  (+ .zip for updates)
+#   npm run dist:mac      → dist/Meridiem-<version>-arm64.dmg  (+ .zip for updates)
 #   npm run dist:mac:x64  → Intel build
 #   npm run dist:mac:universal → both architectures in one app (slow, ~1 GB)
 #
@@ -10,8 +10,8 @@
 #     need an Apple Developer ID and notarization — see docs/PACKAGING.md.
 #   * `files` below trims the dependency tree aggressively (docs, sources, maps,
 #     tests). Anything that must stay at runtime is listed explicitly.
-appId: com.hacker.yestion
-productName: Yestion
+appId: com.gloomybreaker.meridiem
+productName: Meridiem
 copyright: Copyright © 2026
 
 directories:
@@ -59,13 +59,13 @@ mac:
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
   extendInfo:
-    NSDesktopFolderUsageDescription: Yestion works on folders of markdown files you choose.
-    NSDocumentsFolderUsageDescription: Yestion works on folders of markdown files you choose.
-    NSDownloadsFolderUsageDescription: Yestion can open attachments from your Downloads folder.
-    NSAppleEventsUsageDescription: Yestion asks other apps to open files you click in a page.
+    NSDesktopFolderUsageDescription: Meridiem works on folders of markdown files you choose.
+    NSDocumentsFolderUsageDescription: Meridiem works on folders of markdown files you choose.
+    NSDownloadsFolderUsageDescription: Meridiem can open attachments from your Downloads folder.
+    NSAppleEventsUsageDescription: Meridiem asks other apps to open files you click in a page.
 
 dmg:
-  title: Yestion ${version}
+  title: Meridiem ${version}
   icon: resources/icon.icns
   background: null
   window:

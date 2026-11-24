@@ -303,7 +303,7 @@ export async function createPdfViewer(opts: {
         else if (typeof d.destroy === 'function') void d.destroy()
         else if (typeof d.cleanup === 'function') void d.cleanup()
       } catch (err) {
-        console.warn('[yestion] pdf teardown failed:', err)
+        console.warn('[meridiem] pdf teardown failed:', err)
       }
       container.innerHTML = ''
     },

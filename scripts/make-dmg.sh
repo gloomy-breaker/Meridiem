@@ -3,14 +3,14 @@
 # (hdiutil) — no network access, no downloaded helper bundles.
 #
 #   1. npm run build                      (renderer + main bundles)
-#   2. npx electron-builder --mac --dir   (packs Yestion.app, applies the
+#   2. npx electron-builder --mac --dir   (packs Meridiem.app, applies the
 #                                          electron-builder.yml file filters)
-#   3. scripts/make-dmg.sh                (this script → dist/Yestion-<ver>.dmg)
+#   3. scripts/make-dmg.sh                (this script → dist/Meridiem-<ver>.dmg)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP="dist/mac-arm64/Yestion.app"
-[ -d "$APP" ] || APP="dist/mac/Yestion.app"
+APP="dist/mac-arm64/Meridiem.app"
+[ -d "$APP" ] || APP="dist/mac/Meridiem.app"
 [ -d "$APP" ] || { echo "No packaged app in dist/ — run ./scripts/package.sh first"; exit 1; }
 
 VERSION=$(node -p "require('./package.json').version")
@@ -24,7 +24,7 @@ for loc in "$APP/Contents/Resources"/*.lproj; do
     *) rm -rf "$loc" ;;
   esac
 done
-NAME="Yestion"
+NAME="Meridiem"
 VOL="$NAME $VERSION"
 STAGE="dist/dmg-stage"
 DMG="dist/$NAME-$VERSION-arm64.dmg"

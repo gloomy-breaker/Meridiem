@@ -1,12 +1,12 @@
 ---
 name: yestion
-description: Yestion workspace conventions (READ FIRST) — page/folder layout, front matter, [[Page]] links, $math$, image paths, the line-break convention, and how to author .qz quiz, exam and flashcard papers. Load this before creating or editing any page, and before writing a quiz.
+description: Meridiem workspace conventions (READ FIRST) — page/folder layout, front matter, [[Page]] links, $math$, image paths, the line-break convention, and how to author .qz quiz, exam and flashcard papers. Load this before creating or editing any page, and before writing a quiz.
 ---
 
-# Yestion workspace — how to work here
+# Meridiem workspace — how to work here
 
 ## What this place is
-A Yestion workspace: a plain folder of markdown files, opened in the **Yestion** app.
+A Meridiem workspace: a plain folder of markdown files, opened in the **Meridiem** app.
 Everything you write is a real file the user can also open in Finder or an editor.
 The user is usually watching the app while you work — your edits appear in the open
 page by themselves within about a second (the app watches the folder). Never tell

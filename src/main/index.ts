@@ -160,7 +160,7 @@ async function createWindow(): Promise<BrowserWindow> {
     minWidth: 560,
     minHeight: 480,
     show: false,
-    title: 'Yestion',
+    title: 'Meridiem',
     // The app's own chrome is the top of the window: the traffic lights float
     // over the sidebar (which leaves room for them) instead of a system title
     // bar stacking a second bar above the app's own. The top strip of both
@@ -439,7 +439,7 @@ function registerWorkspaceHandlers(): void {
   const logPrint = async (kind: string, marginIn: number, data: Buffer | Uint8Array): Promise<void> => {
     try {
       await appendFile(
-        join(app.getPath('userData'), 'yestion.log'),
+        join(app.getPath('userData'), 'meridiem.log'),
         `${new Date().toISOString()} [print] ${kind} margin=${marginIn}in bytes=${data.length} pages=${countPdfPages(data)}\n`,
         'utf-8'
       )
@@ -768,7 +768,7 @@ function registerWorkspaceHandlers(): void {
   ipcMain.handle('ws:open', async () => {
     const win = BrowserWindow.getFocusedWindow() ?? mainWindow
     const result = await dialog.showOpenDialog(win!, {
-      title: 'Open a Yestion workspace',
+      title: 'Open a Meridiem workspace',
       properties: ['openDirectory']
     })
     if (result.canceled || result.filePaths.length === 0) return { ok: false, canceled: true }
@@ -783,7 +783,7 @@ function registerWorkspaceHandlers(): void {
       return { ok: false, private: true, path: root }
     }
     const info = await validateWorkspace(root)
-    if (!info) return { ok: false, error: 'Not a Yestion workspace. Create one instead (or convert this folder from the welcome screen).' }
+    if (!info) return { ok: false, error: 'Not a Meridiem workspace. Create one instead (or convert this folder from the welcome screen).' }
     settingsStore.set('workspace', root)
     watchWorkspace(root)
     return { ok: true, path: root, name: info.name }
@@ -791,7 +791,7 @@ function registerWorkspaceHandlers(): void {
   ipcMain.handle('ws:choose', async () => {
     const win = BrowserWindow.getFocusedWindow() ?? mainWindow
     const result = await dialog.showOpenDialog(win!, {
-      title: 'Choose Yestion workspace folder',
+      title: 'Choose Meridiem workspace folder',
       properties: ['openDirectory', 'createDirectory']
     })
     if (result.canceled || result.filePaths.length === 0) return null
@@ -822,7 +822,7 @@ function registerWorkspaceHandlers(): void {
     try {
       return await buildLinkTree(root)
     } catch (err) {
-      console.error('[yestion] link tree failed, falling back to folders:', err)
+      console.error('[meridiem] link tree failed, falling back to folders:', err)
       return listWorkspace(root)
     }
   })
@@ -913,7 +913,7 @@ function registerWorkspaceHandlers(): void {
           mainWindow?.webContents.send('ws:page-moved', moves)
         }
       } catch (err) {
-        console.error('[yestion] organizing after save failed:', err)
+        console.error('[meridiem] organizing after save failed:', err)
       }
     }
     // Remember the exact bytes so the watcher can tell this write apart from an
@@ -1119,7 +1119,7 @@ function registerAgentHandlers(): void {
     ) => {
       if (!agent) throw new Error('Agent is not running')
       const withContext = context && context.title
-        ? `[User is viewing the page "${context.title}" (${context.relPath}) in Yestion right now.]\n\n${text}`
+        ? `[User is viewing the page "${context.title}" (${context.relPath}) in Meridiem right now.]\n\n${text}`
         : text
       agentBusy = true
       try {
@@ -1172,7 +1172,7 @@ function registerAgentHandlers(): void {
       const inChat = !!live && !!target && live.sessionFile() === target && !agentBusy
 
       if (live && inChat) {
-        const prefix = `[Quiz marking request from the Yestion quiz runner. Do not use any tools — reply with the JSON object only.]\n\n${req.system}`
+        const prefix = `[Quiz marking request from the Meridiem quiz runner. Do not use any tools — reply with the JSON object only.]\n\n${req.system}`
         const text = `${prefix}\n\n---\n\n${req.prompt}`
         const timeoutMs = req.timeoutMs ?? ONE_SHOT_TIMEOUT_MS
         let timer: ReturnType<typeof setTimeout> | null = null
@@ -1299,7 +1299,7 @@ function registerAgentHandlers(): void {
     }
   })
 
-  // ---- providers & models (Yestion's own config) ----
+  // ---- providers & models (Meridiem's own config) ----
   ipcMain.handle('providers:list', async () => listProviderStatus())
   ipcMain.handle('providers:save', async (_e, payload: { providers: ProviderConfig[] }) => {
     await saveProviders(payload.providers)
@@ -1362,7 +1362,7 @@ app.on('before-quit', (event) => {
 })
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.hacker.yestion')
+  electronApp.setAppUserModelId('com.gloomybreaker.meridiem')
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })

@@ -1,4 +1,4 @@
-import { createRichEditor, dismissEditorFloats, localFileUrl, onEditorCountChange, readCounts, type RichEditor, type YestionPageOpts } from './wysiwyg'
+import { createRichEditor, dismissEditorFloats, localFileUrl, onEditorCountChange, readCounts, type RichEditor, type MeridiemPageOpts } from './wysiwyg'
 import { createEditor, type MarkdownEditor } from './editor'
 import { applyTheme, getTheme, nextTheme, THEMES } from './themes'
 import { fillFontSelect, fontById, printableStack } from './fonts'
@@ -253,7 +253,7 @@ async function drainSaveQueue(): Promise<void> {
       updateTreeLabel(job.relPath, job.title, job.icon)
     }
   } catch (err) {
-    console.error('[yestion] save failed:', err)
+    console.error('[meridiem] save failed:', err)
     if (currentPage?.relPath === job.relPath) {
       setSaveStatus('Save failed — retrying')
     }
@@ -382,7 +382,7 @@ editorMount.appendChild(richEditorEl)
  *  its own folder so relative images resolve (see initPrintHost). */
 let printHostBaseDir: string | null = null
 
-const pageOpts: YestionPageOpts = {
+const pageOpts: MeridiemPageOpts = {
   getBaseDir: () =>
     printHostBaseDir ?? (currentPage ? currentPage.absolutePath.replace(/\/[^/]*$/, '') : null),
   resolvePage: async (name) => {
@@ -2497,7 +2497,7 @@ lockBtn.addEventListener('click', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Renderer diagnostics → userData/yestion.log (readable from a terminal).
+// Renderer diagnostics → userData/meridiem.log (readable from a terminal).
 // ---------------------------------------------------------------------------
 function logLine(level: 'info' | 'warn' | 'error', message: string): void {
   void window.api.log({ level, message })
@@ -2682,7 +2682,7 @@ async function refreshPrintPreview(force = false): Promise<void> {
     printPreviewToken = token
     logLine('info', `print preview rendered (${bytes.byteLength} bytes)`)
   } catch (err) {
-    console.error('[yestion] print preview failed:', err)
+    console.error('[meridiem] print preview failed:', err)
     logLine('error', `print preview failed: ${(err as Error)?.message ?? String(err)}\n${(err as Error)?.stack ?? ''}`)
     setSplitStatus('Preview failed', 'error')
     clearSplitBody()
@@ -2812,7 +2812,7 @@ function initPrintHost(): void {
     // Chromium writes the PDF's /Title — what Preview and every other viewer
     // show as the document's name — from document.title, and this window
     // inherited the app's own from index.html. Every export was therefore
-    // titled "Yestion" whatever it was called on disk. An export sends the
+    // titled "Meridiem" whatever it was called on disk. An export sends the
     // name the file was saved under; the preview, which has no file, uses the
     // page title.
     document.title = (doc.docTitle || doc.title).trim() || 'page'
@@ -2957,7 +2957,7 @@ async function saveSplitNow(): Promise<void> {
       setSplitStatus('Save failed — retrying', 'error')
     }
   } catch (err) {
-    console.error('[yestion] split save failed:', err)
+    console.error('[meridiem] split save failed:', err)
     retry = true
     setSplitStatus('Save failed — retrying', 'error')
   } finally {
@@ -3062,7 +3062,7 @@ async function setSplitTarget(rel: string, kind: string, title?: string): Promis
   // there would be parsed as a page and written back as one. Refused rather
   // than approximated — the main pane is the only place a .qz runs.
   if (kind === 'quiz') {
-    console.warn('[yestion] refusing to split a quiz file:', rel)
+    console.warn('[meridiem] refusing to split a quiz file:', rel)
     return
   }
   // Picking something else in that pane means leaving the print preview.
@@ -3864,7 +3864,7 @@ async function initWorkspace(): Promise<void> {
   ;(document.getElementById('locked-view') as HTMLElement).hidden = true
   const display = info.displayPath ?? base
   const isPrivate = !!info.private
-  const name = info.name || display.split('/').pop() || 'Yestion'
+  const name = info.name || display.split('/').pop() || 'Meridiem'
   // The switcher's own icon carries the lock; the name doesn't need to repeat
   // it as a sticker.
   workspaceNameEl.textContent = name

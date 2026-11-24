@@ -1,9 +1,10 @@
 {
-  "name": "yestion",
+  "name": "meridiem",
+  "productName": "Meridiem",
   "version": "1.0.0",
-  "description": "A files-first, Notion-like markdown workspace with a built-in coding agent.",
+  "description": "A calm, local-first academic workspace and active-recall studio for macOS.",
   "main": "./out/main/index.js",
-  "author": "hacker",
+  "author": "gloomy-breaker",
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",
@@ -63,9 +64,9 @@
     "unicode-emoji-json": "^0.9.0",
     "vite": "^8.2.1"
   },
-  "homepage": "https://github.com/antoniology/yestion",
+  "homepage": "https://github.com/gloomy-breaker/Meridiem",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/antoniology/yestion.git"
+    "url": "git+https://github.com/gloomy-breaker/Meridiem.git"
   }
 }

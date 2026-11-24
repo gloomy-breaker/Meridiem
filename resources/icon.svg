@@ -1,11 +1,32 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#37352f"/>
-      <stop offset="1" stop-color="#1f1e1a"/>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7efe2"/>
+      <stop offset="1" stop-color="#e9d6ba"/>
     </linearGradient>
+    <linearGradient id="arc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#cf9568"/>
+      <stop offset="1" stop-color="#a86a4a"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#d9a477"/>
+      <stop offset="1" stop-color="#b97950"/>
+    </radialGradient>
   </defs>
-  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#g)"/>
-  <text x="512" y="700" font-family="Georgia, 'Times New Roman', serif" font-size="520" font-weight="bold" fill="#f5f2ea" text-anchor="middle">Y</text>
-  <circle cx="820" cy="220" r="46" fill="#2383e2"/>
+
+  <!-- Warm paper tile -->
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#paper)"/>
+  <rect x="33" y="33" width="958" height="958" rx="223" fill="none" stroke="#3a2f27" stroke-opacity="0.10" stroke-width="2"/>
+
+  <!-- Meridian circle -->
+  <circle cx="512" cy="512" r="248" fill="none" stroke="#3a2f27" stroke-width="38"/>
+
+  <!-- Meridian arc: the vertical great circle -->
+  <ellipse cx="512" cy="512" rx="118" ry="248" fill="none" stroke="url(#arc)" stroke-width="34"/>
+
+  <!-- Horizon arc, quiet and offset -->
+  <path d="M 322 686 A 230 230 0 0 0 702 686" fill="none" stroke="#3a2f27" stroke-opacity="0.20" stroke-width="20" stroke-linecap="round"/>
+
+  <!-- Warm point of focus -->
+  <circle cx="651" cy="373" r="46" fill="url(#sun)"/>
 </svg>

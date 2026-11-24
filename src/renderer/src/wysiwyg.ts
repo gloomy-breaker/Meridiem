@@ -195,7 +195,7 @@ function escapeAttr(value: string): string {
 //     tag run is parsed as markdown again.
 // Comments, doctypes and raw-text elements (script/pre/style/textarea) keep
 // markdown-it's own terminator-based handling.
-// `h` is Yestion's highlight tag (`<h>…</h>`), not an HTML heading — without it
+// `h` is Meridiem's highlight tag (`<h>…</h>`), not an HTML heading — without it
 // a line that *starts* with `<h>` opened an HTML block and its inner markdown
 // (`**bold**`, `$math$`, …) came through as raw text. The `\b` keeps the real
 // heading tags `<h1>`…`<h6>` (and `<hr>`, `<html>`) as genuine blocks.
@@ -1429,7 +1429,7 @@ const PageLink = TipTapNode.create({
       chip.className = 'page-link-chip'
       chip.contentEditable = 'false'
       let current = node
-      const pageOpts = (editor as unknown as { yestion?: YestionPageOpts }).yestion
+      const pageOpts = (editor as unknown as { yestion?: MeridiemPageOpts }).yestion
       const render = (): void => {
         const name = String(current.attrs.name ?? '')
         // Until the target resolves, the chip shows the name it was written
@@ -1761,7 +1761,7 @@ const FileLink = TipTapNode.create({
       chip.className = 'file-link-chip'
       chip.contentEditable = 'false'
       let current = node
-      const pageOpts = (editor as unknown as { yestion?: YestionPageOpts }).yestion
+      const pageOpts = (editor as unknown as { yestion?: MeridiemPageOpts }).yestion
       const render = (): void => {
         const p = String(current.attrs.path ?? '')
         const name = p.split('/').pop() ?? p
@@ -2694,7 +2694,7 @@ function detectSlashTrigger(editor: Editor): SlashTrigger | null {
 // Public factory
 // ---------------------------------------------------------------------------
 
-export interface YestionPageOpts { afterNewPageLink?: () => void
+export interface MeridiemPageOpts { afterNewPageLink?: () => void
   openFileRef?: (absolutePath: string) => void
   getBaseDir: () => string | null
   resolvePage: (name: string) => Promise<{ title: string; icon: string } | null>
@@ -2797,7 +2797,7 @@ export function createRichEditor(
   element: HTMLElement,
   initialMarkdown: string,
   onChange: () => void,
-  opts: YestionPageOpts
+  opts: MeridiemPageOpts
 ): RichEditor {
   const getBaseDir = opts.getBaseDir
   const resolvePage = opts.resolvePage
@@ -3427,7 +3427,7 @@ export function createRichEditor(
     void insertImageFiles(items)
   })
 
-;(editor as unknown as { yestion: YestionPageOpts }).yestion = {
+;(editor as unknown as { yestion: MeridiemPageOpts }).yestion = {
     getBaseDir,
     resolvePage,
     openPage,

@@ -80,7 +80,7 @@ export function getCurrentHandle(): AgentHandle | null {
 }
 
 /**
- * The models the app offers: exactly what is configured in Yestion's own
+ * The models the app offers: exactly what is configured in Meridiem's own
  * provider store. pi's built-in catalog (the hundred unusable entries) is never
  * shown and never fetched.
  */
@@ -140,7 +140,7 @@ async function seedAgentExtensions(agentDir: string): Promise<void> {
   }
 }
 
-// The Yestion skill: seeded at .pi/skills/yestion/SKILL.md *only when missing*,
+// The Meridiem skill: seeded at .pi/skills/yestion/SKILL.md *only when missing*,
 // so the user can tune it without the app overwriting their edits. The text
 // lives in src/main/prompts/skill.md.
 const YESTION_SKILL_TEXT = yestionSkillText
@@ -244,7 +244,7 @@ function stripImageData(value: unknown): unknown {
 export interface OneShotRequest {
   /**
    * Replaces the system prompt outright. A grader is not a notebook assistant:
-   * it must not inherit the Yestion skill, the workspace context files, or the
+   * it must not inherit the Meridiem skill, the workspace context files, or the
    * "you are editing this page" framing.
    */
   system: string
@@ -420,13 +420,13 @@ export async function startAgentSession(
   onEvent: (event: PiSessionEvent) => void
 ): Promise<AgentHandle> {
   const pi = await loadPi()
-  // Share the user's existing pi credentials/model configs (so Yestion's agent
-  // uses the same providers, keys and models as their terminal pi). Yestion's
+  // Share the user's existing pi credentials/model configs (so Meridiem's agent
+  // uses the same providers, keys and models as their terminal pi). Meridiem's
   // own BYOK settings act as an override when set.
-  // pi is fed from Yestion's own provider store (userData/agent/…): our
+  // pi is fed from Meridiem's own provider store (userData/agent/…): our
   // providers, our models, our keys. No catalog refresh, no ~/.pi dependency.
   const piConfig = await writePiConfig()
-  // Bundled extensions need to find Yestion's own auth.json/models.json (their
+  // Bundled extensions need to find Meridiem's own auth.json/models.json (their
   // default lookup is ~/.pi/agent), and must be on disk before the loader scans.
   process.env.YESTION_AGENT_DIR = piConfig.agentDir
   await seedAgentExtensions(piConfig.agentDir)
@@ -445,8 +445,9 @@ export async function startAgentSession(
   // own configured default model from ~/.pi/agent settings.
   const model = settings.model ? modelRuntime.getModel(settings.provider, settings.model) : undefined
 
-  // The yestion skill lives in the workspace itself so pi discovers it like
-  // any other skill AND the user can read/edit/tune it in plain files.
+  // The workspace-conventions skill (id `yestion`, retained for compatibility)
+  // lives in the workspace itself so pi discovers it like any other skill AND
+  // the user can read/edit/tune it in plain files.
   const skillDir = join(workspaceRoot, '.pi', 'skills', 'yestion')
   await fs.mkdir(skillDir, { recursive: true })
   const skillPath = join(skillDir, 'SKILL.md')
@@ -522,7 +523,7 @@ export async function startAgentSession(
       if (best) effectiveLevel = best
     }
     if (effectiveLevel !== requestedLevel) {
-      console.warn(`[yestion] thinking level ${requestedLevel} → ${effectiveLevel} (${modelCfg?.id ?? 'model'})`)
+      console.warn(`[meridiem] thinking level ${requestedLevel} → ${effectiveLevel} (${modelCfg?.id ?? 'model'})`)
     }
   } catch {
     /* keep the requested level */
