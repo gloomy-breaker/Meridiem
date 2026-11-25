@@ -2679,7 +2679,59 @@ window.api.onMenuAction((action) => {
   }
 })
 
+let activeAgentHarness = 'none'
+
+/** Keep the panel honest about which backend is selected. Off hides the panel
+ *  and its titlebar switch entirely; ACP and pi show it, but only pi exposes
+ *  provider/model controls. */
+function applyAgentHarness(harness: string): void {
+  activeAgentHarness = harness
+  const off = harness === 'none'
+  const toggle = document.getElementById('toggle-agent-btn') as HTMLElement | null
+  const panel = document.getElementById('agent-panel') as HTMLElement | null
+  const resizer = document.getElementById('agent-resizer') as HTMLElement | null
+  const offState = document.getElementById('agent-off-state') as HTMLElement | null
+  const messages = document.getElementById('agent-messages') as HTMLElement | null
+  const form = document.getElementById('agent-form') as HTMLElement | null
+  const notice = document.getElementById('agent-session-notice') as HTMLElement | null
+  const badge = document.getElementById('agent-harness-badge') as HTMLElement | null
+  if (toggle) {
+    toggle.hidden = off
+    if (off) toggle.classList.remove('active')
+    toggle.title = off ? 'AI is off' : 'AI sidebar'
+  }
+  if (offState) offState.hidden = !off
+  if (messages) messages.hidden = off
+  if (form) form.hidden = off
+  if (notice && off) notice.hidden = true
+  if (off && panel && !panel.hidden) {
+    panel.hidden = true
+    if (resizer) resizer.hidden = true
+    agentPanel?.dismissFloats()
+    void window.api.setSettings('agentOpen', false)
+  }
+  if (badge) {
+    badge.hidden = off
+    if (harness === 'pi') badge.textContent = 'Built-in · pi'
+    else if (harness.startsWith('acp:')) {
+      const tool = harness.slice(4)
+      const label = tool === 'opencode' ? 'OpenCode' : tool === 'claude' ? 'Claude Code' : tool === 'codex' ? 'Codex' : tool
+      badge.textContent = `${label} · ACP`
+    }
+  }
+  const pi = harness === 'pi'
+  for (const id of ['agent-model-select', 'agent-effort', 'agent-history']) {
+    const el = document.getElementById(id) as HTMLElement | null
+    if (el) el.hidden = !pi
+  }
+}
+
 function toggleAgentPanel(): void {
+  if (activeAgentHarness === 'none') {
+    // The switch is hidden in this mode; this guard covers a stale keyboard
+    // shortcut or a menu action from before the harness was turned off.
+    return
+  }
   const panel = document.getElementById('agent-panel') as HTMLElement
   panel.hidden = !panel.hidden
   ;(document.getElementById('agent-resizer') as HTMLElement).hidden = panel.hidden
@@ -4823,10 +4875,15 @@ async function init(): Promise<void> {
   const settingsApi = setupSettings({
     onWorkspaceChanged: () => void initWorkspace(),
     onAgentSettingsChanged: () => void agentApi.restart(),
+    onHarnessChanged: (harness) => {
+      applyAgentHarness(harness)
+      void agentApi.harnessChanged()
+    },
     onThemeChange: (id) => setTheme(id),
     onFontChange: (id) => applyPreviewFont(id),
     onCountModeChange: (mode) => setCountMode(mode)
   })
+  document.getElementById('agent-off-settings')?.addEventListener('click', () => settingsApi.show())
   window.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === ',') {
       e.preventDefault()
@@ -4908,9 +4965,11 @@ async function init(): Promise<void> {
   attachResizer('agent-resizer', 'agent-panel', 'agentWidth', 260, 640)
 
   const agentOpen = setting<boolean>('agentOpen', false)
-  ;(document.getElementById('agent-panel') as HTMLElement).hidden = agentOpen !== true
-  ;(document.getElementById('agent-resizer') as HTMLElement).hidden = agentOpen !== true
-  ;(document.getElementById('toggle-agent-btn') as HTMLElement).classList.toggle('active', agentOpen === true)
+  applyAgentHarness(setting<string>('agentHarness', 'none'))
+  const showAgent = agentOpen === true && activeAgentHarness !== 'none'
+  ;(document.getElementById('agent-panel') as HTMLElement).hidden = !showAgent
+  ;(document.getElementById('agent-resizer') as HTMLElement).hidden = !showAgent
+  ;(document.getElementById('toggle-agent-btn') as HTMLElement).classList.toggle('active', showAgent)
 
   await initWorkspace()
 }

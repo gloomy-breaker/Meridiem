@@ -209,6 +209,12 @@ const api = {
   agentCompact: (instructions?: string): Promise<unknown> => ipcRenderer.invoke('agent:compact', instructions),
   agentThinking: (level: string): Promise<boolean> => ipcRenderer.invoke('agent:thinking', level),
   agentRestart: (): Promise<boolean> => ipcRenderer.invoke('agent:restart'),
+  agentHarnesses: (force?: boolean): Promise<
+    { id: string; kind: 'none' | 'pi' | 'acp'; label: string; installed: boolean; path?: string; tool?: string }[]
+  > => ipcRenderer.invoke('agent:harnesses', force === true),
+  agentHarnessGet: (): Promise<string> => ipcRenderer.invoke('agent:harnessGet'),
+  agentHarnessSet: (id: string): Promise<{ ok: boolean; harness: string; message?: string; path?: string }> =>
+    ipcRenderer.invoke('agent:harnessSet', id),
   onAgentEvent: (callback: (event: unknown) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, event: unknown): void => callback(event)
     ipcRenderer.on('agent:event', listener)

@@ -1172,8 +1172,10 @@ export function createQuizPane(): QuizPaneHandle {
       wrap.appendChild(details)
     }
 
-    // `self` questions are the ones where the candidate is the marker.
-    if (q.grade === 'self' && attempt) {
+    // `self` questions are the ones where the candidate is the marker. An AI
+    // question whose grader is unavailable (including "Off") becomes one too:
+    // the official scheme is right there, and the paper must stay finishable.
+    if ((q.grade === 'self' || (q.grade === 'ai' && g?.ungraded)) && attempt) {
       const row = document.createElement('div')
       row.className = 'qz-selfmark'
       const label = document.createElement('span')

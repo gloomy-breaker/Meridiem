@@ -105,6 +105,7 @@ export function setupAgentPanel(opts: AgentPanelOpts): {
   newChat: () => Promise<void>
   openRecent: (anchor: HTMLElement) => Promise<void>
   setWorkspace: (path: string | null) => Promise<void>
+  harnessChanged: () => Promise<void>
   dismissFloats: () => HTMLElement[]
 } {
   const messagesEl = document.getElementById('agent-messages') as HTMLElement
@@ -1173,6 +1174,15 @@ export function setupAgentPanel(opts: AgentPanelOpts): {
           // The finished message, replayed after its turn was closed. Fold it
           // into the turn on screen rather than leaving a copy behind.
           foldLateText(full, type)
+        } else {
+          // A driver that reports only the finished message (ACP harnesses do
+          // this) must still get a text row: the turn is open, but no delta
+          // created one.
+          const text = ensureText()
+          if (text) {
+            text.item.text = full
+            scheduleTextRender()
+          }
         }
       }
       const stop = msg?.stopReason ?? ''
@@ -1316,6 +1326,10 @@ export function setupAgentPanel(opts: AgentPanelOpts): {
   ;(window as any).__reloadModels = loadModels  // let settings force a refresh
   const ctxLabel = document.getElementById('agent-ctx') as HTMLElement
   async function loadModels(): Promise<void> {
+    if ((await window.api.agentHarnessGet()) !== 'pi') {
+      modelSelect.replaceChildren()
+      return
+    }
     const prov = ((await window.api.getSettings('agentProvider')) as string) || 'anthropic'
     const cur = ((await window.api.getSettings('agentModel')) as string) || ''
     const models = await window.api.agentModels()
@@ -1773,6 +1787,10 @@ export function setupAgentPanel(opts: AgentPanelOpts): {
   // began a new session, which is why yesterday's conversation looked lost.
   async function reopenRemembered(): Promise<void> {
     try {
+      // External ACP harnesses keep their own history; pi JSONL transcripts are
+      // not resumable through them, and Off has no agent at all.
+      const harness = await window.api.agentHarnessGet()
+      if (harness !== 'pi') return
       const root = workspacePath
       const remembered = ((await window.api.getSettings('agentSessionFile')) as string) || ''
       const rememberedRoot = ((await window.api.getSettings('agentSessionRoot')) as string) || ''
@@ -1801,6 +1819,21 @@ export function setupAgentPanel(opts: AgentPanelOpts): {
         agentReady = false
         updateSessionNotice()
       }
+    },
+    /**
+     * The backend changed underneath the panel. A pi transcript cannot be shown
+     * as an ACP conversation (and vice versa), so detach, clear, and re-open the
+     * remembered conversation only when the new driver can actually read it.
+     */
+    harnessChanged: async () => {
+      await window.api.agentStop()
+      agentReady = false
+      currentSessionFile = null
+      shownSessionFile = null
+      clearTranscript()
+      updateSessionNotice()
+      await loadModels()
+      await reopenRemembered()
     },
     newChat,
     openRecent,

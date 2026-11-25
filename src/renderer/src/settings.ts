@@ -47,6 +47,7 @@ const WIRE_APIS = [
 interface SettingsOpts {
   onWorkspaceChanged: () => void
   onAgentSettingsChanged: () => void
+  onHarnessChanged: (harness: string) => void
   onThemeChange: (id: string) => void
   onFontChange: (id: string) => void
   /** Which unit the page footer counts in. */
@@ -65,6 +66,21 @@ export function setupSettings(opts: SettingsOpts): { show: () => void; close: ()
   const defaultModelSelect = document.getElementById('settings-default-model') as HTMLSelectElement
   const thinkingSelect = document.getElementById('settings-thinking') as HTMLSelectElement
   const statusEl = document.getElementById('settings-status') as HTMLElement
+  const harnessSelect = document.getElementById('settings-harness') as HTMLSelectElement | null
+  const harnessDetail = document.getElementById('settings-harness-detail') as HTMLElement | null
+  const providersGroup = document.getElementById('settings-providers-group') as HTMLElement | null
+  const modelsGroup = document.getElementById('settings-models-group') as HTMLElement | null
+  const agentGroup = document.getElementById('settings-agent-group') as HTMLElement | null
+
+  interface HarnessRow {
+    id: string
+    kind: 'none' | 'pi' | 'acp'
+    label: string
+    installed: boolean
+    path?: string
+    tool?: string
+  }
+  let harnesses: HarnessRow[] = []
 
   // Theme options
   for (const group of [
@@ -342,6 +358,136 @@ export function setupSettings(opts: SettingsOpts): { show: () => void; close: ()
     await fillModelSelect()
   }
 
+  // ---- AI harness ---------------------------------------------------------
+
+  function applyHarnessVisibility(harness: string): void {
+    const pi = harness === 'pi'
+    if (providersGroup) providersGroup.hidden = !pi
+    if (modelsGroup) modelsGroup.hidden = !pi
+    if (agentGroup) agentGroup.hidden = !pi
+  }
+
+  function paintHarnessDetail(harness: string): void {
+    if (!harnessDetail) return
+    const row = harnesses.find((h) => h.id === harness)
+    const missing = harnesses.filter((h) => h.kind === 'acp' && !h.installed)
+    const detected = harnesses.filter((h) => h.kind === 'acp' && h.installed)
+    harnessDetail.replaceChildren()
+
+    const line = document.createElement('div')
+    if (harness === 'none') {
+      line.innerHTML =
+        'No agent process starts and no AI memory is used. The AI sidebar is hidden;' +
+        ' prose answers fall back to the official markscheme for self-marking.'
+    } else if (harness === 'pi') {
+      line.innerHTML =
+        'Uses the providers and models below. API keys are stored in your macOS Keychain,' +
+        ' and nothing leaves the app except the model requests you send.'
+    } else if (row?.kind === 'acp') {
+      if (row.installed) {
+        line.innerHTML =
+          `External <strong>${row.label}</strong> session, scoped to this workspace. ` +
+          'The harness owns its models, authentication and tool permissions.'
+        if (row.path) {
+          const path = document.createElement('span')
+          path.className = 'harness-path'
+          path.textContent = row.path
+          line.appendChild(path)
+        }
+      } else {
+        line.innerHTML = `<strong>${row.label}</strong> is selected but was not found on this app's PATH.`
+      }
+    } else {
+      line.textContent = 'Unknown harness. Choose Off or Built-in below.'
+    }
+    harnessDetail.appendChild(line)
+
+    const summary = document.createElement('div')
+    summary.className = 'harness-meta'
+    const detectedText = detected.length
+      ? `Detected: ${detected.map((h) => h.label.replace(' (ACP)', '')).join(', ')}`
+      : 'No ACP CLI detected.'
+    summary.textContent = detectedText
+    harnessDetail.appendChild(summary)
+    if (missing.length > 0) {
+      const note = document.createElement('div')
+      note.className = 'harness-missing'
+      note.textContent = `Not installed: ${missing.map((h) => h.label.replace(' (ACP)', '')).join(', ')}.`
+      harnessDetail.appendChild(note)
+    }
+  }
+
+  async function refreshHarnesses(): Promise<void> {
+    if (!harnessSelect) return
+    let current = 'none'
+    try {
+      harnesses = (await window.api.agentHarnesses(true)) as HarnessRow[]
+      current = await window.api.agentHarnessGet()
+    } catch {
+      harnesses = []
+    }
+    harnessSelect.replaceChildren()
+    const off = document.createElement('option')
+    off.value = 'none'
+    off.textContent = 'Off (No AI)'
+    harnessSelect.appendChild(off)
+
+    const group = document.createElement('optgroup')
+    group.label = 'External harnesses (ACP)'
+    const acp = harnesses.filter((h) => h.kind === 'acp')
+    for (const h of acp) {
+      if (!h.installed && h.id !== current) continue
+      const opt = document.createElement('option')
+      opt.value = h.id
+      opt.textContent = h.installed
+        ? `${h.label.replace(' (ACP)', '')} (ACP) — ${h.path ?? 'detected'}`
+        : `${h.label.replace(' (ACP)', '')} (ACP) — not installed`
+      opt.disabled = !h.installed
+      group.appendChild(opt)
+    }
+    if (group.childElementCount === 0) {
+      const none = document.createElement('option')
+      none.value = ''
+      none.disabled = true
+      none.textContent = 'No ACP CLI detected'
+      group.appendChild(none)
+    }
+    harnessSelect.appendChild(group)
+
+    const pi = document.createElement('option')
+    pi.value = 'pi'
+    pi.textContent = 'Built-in (pi + API key)'
+    harnessSelect.appendChild(pi)
+
+    const known = harnesses.some((h) => h.id === current)
+    harnessSelect.value = known || current === 'none' || current === 'pi' ? current : ''
+    if (!harnessSelect.value) {
+      const missingCurrent = document.createElement('option')
+      missingCurrent.value = current
+      missingCurrent.textContent = `${current.replace(/^acp:/, '')} (ACP) — not installed`
+      harnessSelect.appendChild(missingCurrent)
+      harnessSelect.value = current
+    }
+    applyHarnessVisibility(current)
+    paintHarnessDetail(current)
+  }
+
+  harnessSelect?.addEventListener('change', () => {
+    void (async () => {
+      const wanted = harnessSelect.value
+      const res = await window.api.agentHarnessSet(wanted)
+      if (!res.ok) {
+        statusEl.textContent = res.message ?? 'Could not select that harness.'
+        harnessSelect.value = res.harness
+        return
+      }
+      applyHarnessVisibility(res.harness)
+      paintHarnessDetail(res.harness)
+      opts.onHarnessChanged(res.harness)
+      if (res.harness === 'pi' && providers.length === 0) await loadProviders()
+    })()
+  })
+
   // ---- wiring -------------------------------------------------------------
 
   document.getElementById('settings-add-ollama')?.addEventListener('click', () => {
@@ -530,12 +676,21 @@ export function setupSettings(opts: SettingsOpts): { show: () => void; close: ()
         ((await window.api.getSettings('wordCountMode')) as string) === 'asian' ? 'asian' : 'words'
     }
     thinkingSelect.value = ((await window.api.getSettings('agentThinking')) as string) || 'max'
-    await loadProviders()
-    const models = await window.api.agentModels()
-    const providerNames = [...new Set(models.map((m) => m.providerName))]
-    statusEl.textContent = models.length
-      ? `${models.length} model${models.length === 1 ? '' : 's'} across ${providerNames.length} provider${providerNames.length === 1 ? '' : 's'}.`
-      : 'No models yet — add a provider and a model below.'
+    await refreshHarnesses()
+    if (harnessSelect?.value === 'pi') {
+      await loadProviders()
+      const models = await window.api.agentModels()
+      const providerNames = [...new Set(models.map((m) => m.providerName))]
+      statusEl.textContent = models.length
+        ? `${models.length} model${models.length === 1 ? '' : 's'} across ${providerNames.length} provider${providerNames.length === 1 ? '' : 's'}.`
+        : 'No models yet — add a provider and a model below.'
+    } else {
+      providers = []
+      renderProviders()
+      renderModels()
+      defaultModelSelect.innerHTML = ''
+      statusEl.textContent = ''
+    }
   }
 
   function show(): void {

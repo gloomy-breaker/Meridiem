@@ -203,6 +203,11 @@ export interface Api {
   agentCompact: (instructions?: string) => Promise<unknown>
   agentThinking: (level: string) => Promise<boolean>
   agentRestart: () => Promise<boolean>
+  agentHarnesses: (force?: boolean) => Promise<
+    { id: string; kind: 'none' | 'pi' | 'acp'; label: string; installed: boolean; path?: string; tool?: string }[]
+  >
+  agentHarnessGet: () => Promise<string>
+  agentHarnessSet: (id: string) => Promise<{ ok: boolean; harness: string; message?: string; path?: string }>
   onAgentEvent: (callback: (event: unknown) => void) => () => void
   onAgentStarted: (callback: (payload: { model: string; contextWindow?: number | null }) => void) => () => void
   onAgentStopped: (callback: () => void) => () => void

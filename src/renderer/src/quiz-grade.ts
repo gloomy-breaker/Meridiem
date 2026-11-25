@@ -334,6 +334,23 @@ function ungraded(question: QzQuestion, note: string, elapsedMs: number): Gradin
  */
 export async function gradeAnswer(req: GradingRequest): Promise<Grading> {
   const { question } = req
+  // No AI means no request at all: an objective paper still marks itself, and a
+  // prose answer becomes a self-marking exercise against its official scheme.
+  // This is checked here, in the renderer's single grading entry point, so the
+  // runner never shows an API error for a deliberate Off setting.
+  let harness = 'none'
+  try {
+    harness = await window.api.agentHarnessGet()
+  } catch {
+    harness = 'none'
+  }
+  if (harness === 'none') {
+    return ungraded(
+      question,
+      'AI marking is off. Use the marking scheme below to mark this answer yourself',
+      0
+    )
+  }
   let res: { ok: boolean; text: string; error?: string; elapsedMs: number }
   const system = GRADING_SYSTEM
   const prompt = buildGradingPrompt(req)

@@ -59,6 +59,8 @@ export interface Settings {
   agentModel: string
   agentApiKey: string
   agentThinking: string
+  /** none | pi | acp:<tool>. No AI is the default. */
+  agentHarness: string
   sidebarOpen: boolean
   agentOpen: boolean
   sidebarWidth: number
@@ -84,6 +86,7 @@ const DEFAULTS: Settings = {
   agentModel: '',
   agentApiKey: '',
   agentThinking: 'max',
+  agentHarness: 'none',
   sidebarOpen: true,
   agentOpen: false,
   sidebarWidth: 240,

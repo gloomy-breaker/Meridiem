@@ -9497,3 +9497,80 @@ body {
 /* The dot is absolutely positioned inside the day, so the button must be the
    containing block. (A grid item is not one by default.) */
 .cal-day { position: relative; }
+
+/* ===========================================================================
+   AI harness — Off / ACP / Built-in
+   =========================================================================== */
+
+.harness-detail {
+  margin-top: 7px;
+  padding: 9px 11px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--field-bg);
+  color: var(--muted-2);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.harness-detail strong { color: var(--text-2); font-weight: 600; }
+.harness-detail .harness-path {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--panel-bg);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  word-break: break-all;
+}
+.harness-detail .harness-missing { color: var(--muted-3); }
+
+.agent-harness-badge {
+  margin-left: 2px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.agent-off-state {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 24px;
+  text-align: center;
+}
+.agent-off-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--field-bg);
+  color: var(--muted-3);
+}
+.agent-off-state h3 { margin: 0; color: var(--text-2); font-size: 14px; font-weight: 600; }
+.agent-off-state p {
+  margin: 0;
+  max-width: 260px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.agent-off-state .btn { margin-top: 4px; }
+
+.harness-meta {
+  margin-top: 5px;
+  color: var(--muted-3);
+  font-size: 10.5px;
+}

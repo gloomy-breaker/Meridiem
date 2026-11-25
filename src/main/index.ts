@@ -68,24 +68,47 @@ import { logLine } from './log'
 // time, so the preload's contextBridge code never reaches the main bundle.
 import type { PagePrintPayload } from '../preload/index'
 import {
-  startAgentSession,
-  getCurrentHandle,
   listAvailableModels,
   listAgentSessions,
   readAgentSessionMessages,
-  runOneShot,
   lastAssistantText,
   ONE_SHOT_TIMEOUT_MS,
   type AgentHandle,
   type AgentSettings,
   type OneShotRequest
 } from './agent'
+import {
+  HARNESS_NONE,
+  harnessKind,
+  listHarnesses,
+  runOneShotForHarness,
+  startAgentForHarness,
+  validateHarness
+} from './agent-driver'
+import { terminateAllAcpChildren } from './agent-acp'
 
 // Nothing pi does should reach the network for catalogs or packages.
 process.env.PI_OFFLINE = '1'
 
 let mainWindow: BrowserWindow | null = null
 let agent: AgentHandle | null = null
+
+/** The selected backend. No AI is the shipped default. */
+function activeHarness(): string {
+  return ((settingsStore.get('agentHarness') as string | undefined) || HARNESS_NONE)
+}
+
+/** Dismantle the live driver and let a child process go with it. */
+async function stopAgent(): Promise<void> {
+  const current = agent
+  agent = null
+  if (!current) return
+  try {
+    await current.dispose()
+  } catch {
+    /* already gone */
+  }
+}
 /**
  * Which conversation created (or last edited) each `.qz`, keyed by
  * workspace-relative path. Filled by the workspace watcher whenever a quiz
@@ -190,6 +213,8 @@ async function createWindow(): Promise<BrowserWindow> {
     // The print host is a second window; leaving it up would keep the app
     // "running with windows" after the one you can see is gone.
     destroyPrintHost()
+    terminateAllAcpChildren()
+    void stopAgent()
   })
 
   win.webContents.setWindowOpenHandler((details) => {
@@ -699,6 +724,7 @@ function registerWorkspaceHandlers(): void {
       if (!list.some((w) => w.path === root)) list.push({ path: root, name: payload.name.trim(), kind: 'private' })
       settingsStore.set('workspaces', list)
       await openVaultSession(root, payload.password)
+      await stopAgent()
       settingsStore.set('workspace', root)
       watchWorkspace(getWorkspace() as string)
       return root
@@ -707,6 +733,7 @@ function registerWorkspaceHandlers(): void {
     const list = ((settingsStore.get('workspaces') as WorkspaceEntry[] | undefined) ?? []).slice()
     if (!list.some((w) => w.path === root)) list.push({ path: root, name: payload.name.trim(), kind: 'plain' })
     settingsStore.set('workspaces', list)
+    await stopAgent()
     settingsStore.set('workspace', root)
     watchWorkspace(root)
     return root
@@ -717,6 +744,7 @@ function registerWorkspaceHandlers(): void {
     try {
       await closeVaultSession()
       const session = await openVaultSession(payload.path, payload.password)
+      await stopAgent()
       settingsStore.set('workspace', payload.path)
       watchWorkspace(session.workDir)
       // Silently skipping a file the user can't see is how vault data goes
@@ -736,6 +764,7 @@ function registerWorkspaceHandlers(): void {
 
   ipcMain.handle('ws:lock', async () => {
     if (!currentVault()) return { ok: true }
+    await stopAgent()
     await closeVaultSession()
     stopWatching()
     return { ok: true }
@@ -756,6 +785,7 @@ function registerWorkspaceHandlers(): void {
   })
   ipcMain.handle('ws:switch', async (_e, path: string) => {
     if (await isVault(path)) return { ok: false, private: true, message: 'This workspace needs its password.' }
+    await stopAgent()
     await closeVaultSession()
     settingsStore.set('workspace', path)
     stopWatching()
@@ -770,6 +800,7 @@ function registerWorkspaceHandlers(): void {
       list.push({ path: root, name: payload.name?.trim() || (root.split('/').pop() ?? 'Workspace'), kind: 'plain' })
       settingsStore.set('workspaces', list)
     }
+    await stopAgent()
     settingsStore.set('workspace', root)
     watchWorkspace(root)
     return root
@@ -793,6 +824,7 @@ function registerWorkspaceHandlers(): void {
     }
     const info = await validateWorkspace(root)
     if (!info) return { ok: false, error: 'Not a Meridiem workspace. Create one instead (or convert this folder from the welcome screen).' }
+    await stopAgent()
     settingsStore.set('workspace', root)
     watchWorkspace(root)
     return { ok: true, path: root, name: info.name }
@@ -1105,11 +1137,15 @@ function registerAgentHandlers(): void {
       await agent.dispose()
       agent = null
     }
+    const harness = activeHarness()
+    if (harnessKind(harness) === 'none') {
+      throw new Error('AI is turned off. Choose a harness in Settings (⌘,).')
+    }
     agentSettings = settings
-    agent = await startAgentSession(
+    agent = await startAgentForHarness(
+      harness,
       root,
       { ...settings, thinkingLevel: (settingsStore.get('agentThinking') as string) || 'max' },
-      app.getPath('userData'),
       (event) => {
         const ev = event as {
           type?: string
@@ -1126,7 +1162,7 @@ function registerAgentHandlers(): void {
     )
     const payload = startPayload()
     send('agent:started', payload)
-    void logLine(`agent session ${settings.newSession ? 'new' : 'attach'} → ${payload.sessionFile ?? '(pending)'}`)
+    void logLine(`agent session ${settings.newSession ? 'new' : 'attach'} → ${payload.sessionFile ?? payload.model}`)
     return payload
   }
 
@@ -1158,6 +1194,9 @@ function registerAgentHandlers(): void {
     agentAbortRequested = false
     lastTurnOutcome = null
     await handle.prompt(text, images)
+    // pi retries interrupted streams; an external harness owns its own retry
+    // policy and a second prompt would be a second user turn.
+    if (harnessKind(activeHarness()) !== 'pi') return
     // Two extra attempts. Enough to ride out a dropped stream; not enough to
     // hammer a provider that is genuinely down.
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -1213,6 +1252,18 @@ function registerAgentHandlers(): void {
   // state (a stop-then-start pair raced with in-flight prompts).
   ipcMain.handle('agent:resume', async (_e, settings: AgentSettings) => {
     const root = requireWorkspace()
+    // ACP sessions live in the external harness, not in Meridiem's pi session
+    // files. "Resume" therefore means "keep the live external session, or start
+    // one if there isn't one"; starting a fresh child on every prompt would wipe
+    // the conversation between turns.
+    if (harnessKind(activeHarness()) !== 'pi') {
+      if (agent) {
+        const payload = startPayload()
+        send('agent:started', payload)
+        return payload
+      }
+      return launch(root, settings)
+    }
     if (!settings.sessionFile) throw new Error('No conversation to resume')
     if (agent && agent.sessionFile() === settings.sessionFile) {
       const payload = startPayload()
@@ -1248,6 +1299,15 @@ function registerAgentHandlers(): void {
   ipcMain.handle('agent:oneshot', async (_e, req: OneShotRequest) => {
     const root = getWorkspace()
     if (!root) return { ok: false, text: '', error: 'No workspace open', elapsedMs: 0 }
+    const harness = activeHarness()
+    if (harnessKind(harness) === 'none') {
+      return {
+        ok: false,
+        text: '',
+        error: 'AI is turned off. Use the marking scheme to mark this answer yourself.',
+        elapsedMs: 0
+      }
+    }
     // The model the user has configured for the panel. Reading it from the
     // store rather than from `agentSettings` means grading works even if the
     // chat panel was never opened this session.
@@ -1257,7 +1317,7 @@ function registerAgentHandlers(): void {
       apiKey: (settingsStore.get('agentApiKey') as string) || '',
       thinkingLevel: (settingsStore.get('agentThinking') as string) || 'low'
     }
-    const result = await runOneShot(settings, req)
+    const result = await runOneShotForHarness(harness, root, settings, req)
     if (!result.ok) void logLine(`agent oneshot failed: ${result.error ?? 'unknown'}`, 'error')
     return result
   })
@@ -1280,9 +1340,19 @@ function registerAgentHandlers(): void {
     ): Promise<{ ok: boolean; text: string; error?: string; elapsedMs: number }> => {
       const started = Date.now()
       const elapsed = (): number => Date.now() - started
+      const harness = activeHarness()
+      if (harnessKind(harness) === 'none') {
+        return {
+          ok: false,
+          text: '',
+          error: 'AI is turned off. Use the marking scheme below to mark this answer yourself.',
+          elapsedMs: 0
+        }
+      }
       const target = quizSessions.get(req.relPath)
       const live = agent
-      const inChat = !!live && !!target && live.sessionFile() === target && !agentBusy
+      const inChat =
+        harnessKind(harness) === 'pi' && !!live && !!target && live.sessionFile() === target && !agentBusy
 
       if (live && inChat) {
         const prefix = `[Quiz marking request from the Meridiem quiz runner. Do not use any tools — reply with the JSON object only.]\n\n${req.system}`
@@ -1320,7 +1390,7 @@ function registerAgentHandlers(): void {
         }
       }
 
-      // No creating conversation is attached — the old, context-free path.
+      // No creating conversation is attached — the context-free path.
       const root = getWorkspace()
       if (!root) return { ok: false, text: '', error: 'No workspace open', elapsedMs: elapsed() }
       const settings: AgentSettings = agentSettings ?? {
@@ -1329,11 +1399,12 @@ function registerAgentHandlers(): void {
         apiKey: (settingsStore.get('agentApiKey') as string) || '',
         thinkingLevel: (settingsStore.get('agentThinking') as string) || 'low'
       }
-      return runOneShot(settings, req)
+      return runOneShotForHarness(harness, root, settings, req)
     }
   )
 
   ipcMain.handle('agent:sessions', async () => {
+    if (harnessKind(activeHarness()) !== 'pi') return []
     const root = getWorkspace()
     if (!root) return []
     return listAgentSessions(root)
@@ -1344,7 +1415,7 @@ function registerAgentHandlers(): void {
   })
 
   ipcMain.handle('agent:sessionCurrent', async () => {
-    return agent?.sessionFile() ?? null
+    return harnessKind(activeHarness()) === 'pi' ? agent?.sessionFile() ?? null : null
   })
 
   // Native context menu for pages / PDFs / files in the sidebar and tab strip.
@@ -1405,6 +1476,7 @@ function registerAgentHandlers(): void {
   })
 
   ipcMain.handle('agent:models', async () => {
+    if (harnessKind(activeHarness()) !== 'pi') return []
     try {
       return await listAvailableModels()
     } catch (err) {
@@ -1436,34 +1508,48 @@ function registerAgentHandlers(): void {
   )
 
   ipcMain.handle('agent:compact', async (_e, instructions?: string) => {
-    const handle = getCurrentHandle()
-    if (!handle) throw new Error('Agent is not running')
-    return handle.compact(instructions)
+    if (!agent) throw new Error('Agent is not running')
+    return agent.compact(instructions)
   })
 
   ipcMain.handle('agent:thinking', async (_e, level: string) => {
-    const handle = getCurrentHandle()
-    if (!handle) throw new Error('Agent is not running')
-    handle.setThinking(level)
+    if (!agent) throw new Error('Agent is not running')
+    agent.setThinking(level)
     return true
   })
 
   ipcMain.handle('agent:restart', async () => {
-    if (agent) {
-      await agent.dispose()
-      agent = null
-    }
+    await stopAgent()
     return true
   })
 
+  ipcMain.handle('agent:harnesses', async (_e, force?: boolean) => listHarnesses(force === true))
+  ipcMain.handle('agent:harnessGet', async () => activeHarness())
+  ipcMain.handle('agent:harnessSet', async (_e, id: string) => {
+    const check = await validateHarness(id)
+    if (!check.ok) return { ok: false, harness: activeHarness(), message: check.message }
+    await stopAgent()
+    settingsStore.set('agentHarness', id)
+    send('agent:stopped', true)
+    void logLine(
+      `agent harness → ${id}${check.path ? ` (${check.path})` : ''}`,
+      'info'
+    )
+    return { ok: true, harness: id, path: check.path }
+  })
+
   ipcMain.handle('agent:stop', async () => {
-    if (agent) {
-      await agent.dispose()
-      agent = null
-    }
+    await stopAgent()
     send('agent:stopped', true)
   })
 }
+
+app.on('before-quit', () => {
+  // The external harness is a child process. Quitting the window is not a
+  // reason to leave it behind; kill synchronously and dispose the pi handle.
+  terminateAllAcpChildren()
+  void stopAgent()
+})
 
 app.on('before-quit', (event) => {
   if (!currentVault()) return
