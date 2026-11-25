@@ -484,9 +484,10 @@ export async function startAcpSession(opts: AcpSessionOptions): Promise<AgentHan
       return { outcome: { outcome: 'selected', optionId } }
     }
     if (method === 'fs/read_text_file') {
-      const path = String(p.path ?? '')
-      if (!withinWorkspace(cwd, path)) throw new Error('ACP read outside the workspace was refused')
-      let content = await fs.readFile(path, 'utf-8')
+      const rawPath = String(p.path ?? '')
+      const abs = isAbsolute(rawPath) ? rawPath : join(cwd, rawPath)
+      if (!withinWorkspace(cwd, abs)) throw new Error('ACP read outside the workspace was refused')
+      let content = await fs.readFile(abs, 'utf-8')
       const line = Number(p.line ?? 0)
       const limit = Number(p.limit ?? 0)
       if (line > 0) {
@@ -496,10 +497,11 @@ export async function startAcpSession(opts: AcpSessionOptions): Promise<AgentHan
       return { content }
     }
     if (method === 'fs/write_text_file') {
-      const path = String(p.path ?? '')
-      if (!withinWorkspace(cwd, path)) throw new Error('ACP write outside the workspace was refused')
-      await fs.mkdir(dirname(path), { recursive: true })
-      await fs.writeFile(path, String(p.content ?? ''), 'utf-8')
+      const rawPath = String(p.path ?? '')
+      const abs = isAbsolute(rawPath) ? rawPath : join(cwd, rawPath)
+      if (!withinWorkspace(cwd, abs)) throw new Error('ACP write outside the workspace was refused')
+      await fs.mkdir(dirname(abs), { recursive: true })
+      await fs.writeFile(abs, String(p.content ?? ''), 'utf-8')
       return null
     }
     throw new Error(`Unsupported ACP request: ${method}`)

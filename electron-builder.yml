@@ -24,7 +24,7 @@ files:
   - out/**/*
   - package.json
   - '!**/*.{md,markdown,map,ts,tsx,flow}'
-  - '!**/{test,tests,__tests__,spec,specs,example,examples,doc,docs,benchmark,benchmarks}/**'
+  - '!**/{test,tests,__tests__,spec,specs,example,examples,benchmark,benchmarks}/**'
   - '!**/{.github,.vscode,.idea,.git}/**'
   - '!node_modules/**/{CHANGELOG,README,LICENSE,LICENCE,AUTHORS,NOTICE}*'
   - '!node_modules/**/*.{d.ts,d.mts,d.cts}'
@@ -33,7 +33,9 @@ files:
   - '!node_modules/openai/src/**'
   - '!node_modules/openai/_vendor/**'
   - '!node_modules/@anthropic-ai/sdk/src/**'
-  - '!node_modules/typebox/build/**'
+  # `typebox` build/ must stay: @earendil-works/pi-ai imports build/index.mjs at
+  # runtime. Excluding it produced a packaged app where built-in pi failed with
+  # ERR_MODULE_NOT_FOUND as soon as an agent session started.
   - '!node_modules/@earendil-works/pi-coding-agent/{docs,examples}/**'
   # Unused sibling packages (the app only imports pi-coding-agent).
   - '!node_modules/@earendil-works/{pi-server,pi-telemetry,pi-protocol}/**'

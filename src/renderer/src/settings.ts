@@ -592,6 +592,12 @@ export function setupSettings(opts: SettingsOpts): { show: () => void; close: ()
 
   // The Save button flushes the debounced writes right away.
   document.getElementById('settings-save')?.addEventListener('click', () => {
+    // Off / ACP do not manage providers. Saving here must never write an empty
+    // provider list over a configuration the user still has for pi.
+    if (harnessSelect?.value !== 'pi') {
+      if (harnessSelect) applyHarnessVisibility(harnessSelect.value)
+      return
+    }
     if (saveTimer !== null) {
       window.clearTimeout(saveTimer)
       saveTimer = null
