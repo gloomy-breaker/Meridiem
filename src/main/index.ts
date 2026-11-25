@@ -95,7 +95,8 @@ let agent: AgentHandle | null = null
 
 /** The selected backend. No AI is the shipped default. */
 function activeHarness(): string {
-  return ((settingsStore.get('agentHarness') as string | undefined) || HARNESS_NONE)
+  const id = ((settingsStore.get('agentHarness') as string | undefined) || HARNESS_NONE)
+  return harnessKind(id) === 'unknown' ? HARNESS_NONE : id
 }
 
 /** Dismantle the live driver and let a child process go with it. */
