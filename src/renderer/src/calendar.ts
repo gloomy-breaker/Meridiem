@@ -94,6 +94,53 @@ export function formatDailyDate(key: string): string {
   })
 }
 
+/** `Wednesday, November 25` — the human title a daily note is shown under. */
+export function dailyTitle(key: string): string {
+  const [y, m, d] = key.split('-').map(Number)
+  if (!y || !m || !d) return key
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric'
+  })
+}
+
+/** `Today`, `Yesterday`, `Tomorrow`, or null when the date is further away. */
+export function relativeDay(key: string): string | null {
+  const [y, m, d] = key.split('-').map(Number)
+  if (!y || !m || !d) return null
+  const target = new Date(y, m - 1, d)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const diff = Math.round((target.getTime() - today.getTime()) / 86_400_000)
+  if (diff === 0) return 'Today'
+  if (diff === -1) return 'Yesterday'
+  if (diff === 1) return 'Tomorrow'
+  return null
+}
+
+/** Shift an ISO date key by whole days (local time, no UTC drift). */
+export function shiftDateKey(key: string, days: number): string {
+  const [y, m, d] = key.split('-').map(Number)
+  const date = new Date(y, (m || 1) - 1, d || 1)
+  date.setDate(date.getDate() + days)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** `Week 48` — the human title a weekly note is shown under. */
+export function weeklyTitle(key: string): string {
+  const m = /^(\d{4})-W(\d{2})$/.exec(key)
+  if (!m) return key
+  return `Week ${Number(m[2])}`
+}
+
+/** The ISO week key that contains a given date. */
+export function weekKeyForDate(key: string): string {
+  const [y, m, d] = key.split('-').map(Number)
+  const info = isoWeekInfo(new Date(y, m - 1, d))
+  return weekKey(info.year, info.week)
+}
+
 export interface CalendarHandle {
   /** Rebuild the month grid (used when the day rolls over). */
   refresh: () => void

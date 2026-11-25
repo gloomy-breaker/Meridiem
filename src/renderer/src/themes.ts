@@ -1,7 +1,8 @@
 export interface ThemeDef {
   id: string
   label: string
-  kind: 'light' | 'dark'
+  /** `system` follows macOS and resolves to light/dark at apply time. */
+  kind: 'light' | 'dark' | 'system'
   vars: Record<string, string>
 }
 
@@ -22,172 +23,220 @@ const LIGHT_SHADOWS = {
   '--shadow-focus': '0 0 0 2.5px rgba(200, 100, 50, 0.22)'
 }
 
+interface Palette {
+  bg: string
+  panel: string
+  text: string
+  muted: string
+  accent: string
+  border: string
+  /** Editor/body tint, usually a step off the panel. */
+  code: string
+  quote: string
+  isDark: boolean
+}
+
+/**
+ * Every named preset is a complete palette, not a partial one. The renderer
+ * reads these tokens directly, and a missing editor token used to fall back to
+ * the browser's default colour (usually black on a dark paper).
+ */
+function paletteVars(p: Palette): Record<string, string> {
+  const { isDark } = p
+  return {
+    // Surfaces
+    '--bg': p.bg,
+    '--panel-bg': p.panel,
+    '--sidebar-bg': p.bg,
+    '--agent-bg': p.bg,
+    '--surface-elevated': p.panel,
+    '--paper': p.panel,
+    '--card-bg': p.panel,
+    '--canvas': p.panel,
+    '--elevated': p.panel,
+    '--app-bg': p.bg,
+    '--control-bg': isDark ? mixHex(p.panel, p.text, 0.07) : mixHex(p.bg, p.panel, 0.62),
+    '--control-hover': isDark ? mixHex(p.panel, p.text, 0.12) : mixHex(p.bg, p.panel, 0.82),
+    '--control-text': isDark ? p.text : mixHex(p.text, p.panel, 0.12),
+    '--field-bg': isDark ? mixHex(p.panel, p.text, 0.05) : mixHex(p.panel, p.bg, 0.5),
+    '--field-line': isDark ? mixHex(p.border, p.text, 0.1) : mixHex(p.border, p.bg, 0.4),
+    '--glass': rgba(p.panel, isDark ? 0.86 : 0.9),
+
+    // Text
+    '--text': p.text,
+    '--text-2': isDark ? mixHex(p.text, p.muted, 0.35) : mixHex(p.text, p.bg, 0.1),
+    '--muted': p.muted,
+    '--muted-2': isDark ? mixHex(p.muted, p.text, 0.3) : mixHex(p.muted, p.text, 0.2),
+    '--muted-3': isDark ? mixHex(p.muted, p.panel, 0.4) : mixHex(p.muted, p.panel, 0.45),
+
+    // Accent & status
+    '--accent': p.accent,
+    '--accent-soft': rgba(p.accent, 0.13),
+    '--accent-soft-2': rgba(p.accent, 0.22),
+    '--accent-ink': isDark ? '#1b1310' : '#fffaf5',
+    '--ok': isDark ? '#7fa06a' : '#5c8a4c',
+    '--warn': isDark ? '#d8a14a' : '#b47d24',
+    '--danger': isDark ? '#cf6f5c' : '#b85442',
+    '--user-bubble': isDark ? mixHex(p.panel, p.text, 0.16) : mixHex(p.panel, p.text, 0.1),
+
+    // Lines & fills
+    '--border': p.border,
+    '--border-strong': mixHex(p.border, p.text, isDark ? 0.18 : 0.12),
+    '--hairline': p.border,
+    '--code-bg': p.code,
+    '--code-text': p.text,
+    '--hover-bg': rgba(p.text, isDark ? 0.055 : 0.05),
+    '--active-bg': rgba(p.text, isDark ? 0.085 : 0.085),
+    '--selected-bg': rgba(p.accent, 0.18),
+
+    // Editor
+    '--selection': rgba(p.accent, isDark ? 0.26 : 0.2),
+    '--cursor': p.text,
+    '--md-heading': isDark ? mixHex(p.text, '#ffffff', 0.18) : mixHex(p.text, '#000000', 0.15),
+    '--md-strong': isDark ? mixHex(p.text, '#ffffff', 0.3) : '#121110',
+    '--md-em': p.text,
+    '--md-link': p.accent,
+    '--md-url': isDark ? mixHex(p.accent, p.text, 0.25) : mixHex(p.accent, '#000000', 0.18),
+    '--md-quote': p.muted,
+    '--md-list': p.text,
+    '--md-meta': p.muted,
+    '--md-keyword': p.accent,
+    '--md-code': isDark ? mixHex(p.accent, p.text, 0.35) : mixHex(p.accent, '#000000', 0.28),
+    '--quote-bg': p.quote,
+    '--quote-border': p.border,
+    '--divider-bg': p.border,
+    ...(isDark ? DARK_SHADOWS : LIGHT_SHADOWS)
+  }
+}
+
 /**
  * Octarine — the app's visual system.
  *
- * Two themes only, both warm and low-contrast: a dark room lit by one amber
- * lamp, and the same room in daylight on paper. The palette is deliberately
- * narrow. Structure comes from three neutral surfaces (sidebar, canvas,
- * elevated) and one hairline; the single saturated colour is terracotta and it
- * is reserved for things you can act on. Nothing here is pure black or pure
- * white.
+ * Follow the system, or pick one of five low-contrast presets. Structure comes
+ * from neutral surfaces and one hairline; the single saturated colour is the
+ * accent and it is reserved for things you can act on. Nothing is pure black or
+ * pure white.
  */
 export const THEMES: ThemeDef[] = [
+  {
+    id: 'system',
+    label: 'Follow macOS System',
+    kind: 'system',
+    vars: {}
+  },
   {
     id: 'octarineDark',
     label: 'Octarine Dark',
     kind: 'dark',
-    vars: {
-      // Surfaces
-      '--bg': '#141414',
-      '--panel-bg': '#191919',
-      '--sidebar-bg': '#141414',
-      '--agent-bg': '#141414',
-      '--surface-elevated': '#242424',
-      '--paper': '#191919',
-      '--card-bg': '#191919',
-      '--canvas': '#191919',
-      '--elevated': '#242424',
-      '--app-bg': '#141414',
-      '--control-bg': '#242424',
-      '--control-hover': '#2b2a27',
-      '--control-text': '#e6e5e3',
-      '--field-bg': '#222120',
-      '--field-line': '#2c2a27',
-      '--glass': 'rgba(30, 29, 27, 0.86)',
-
-      // Text
-      '--text': '#e6e5e3',
-      '--text-2': '#d4d2cd',
-      '--muted': '#8a8986',
-      '--muted-2': '#a6a49f',
-      '--muted-3': '#6b6a66',
-
-      // Accent & status — one warm colour, softly used
-      '--accent': '#d97742',
-      '--accent-soft': 'rgba(217, 119, 66, 0.13)',
-      '--accent-soft-2': 'rgba(217, 119, 66, 0.22)',
-      '--accent-ink': '#1b1310',
-      '--ok': '#7fa06a',
-      '--warn': '#d8a14a',
-      '--danger': '#cf6f5c',
-      '--user-bubble': '#2b2723',
-
-      // Lines & fills
-      '--border': '#282828',
-      '--border-strong': '#343434',
-      '--hairline': '#282828',
-      '--code-bg': '#201f1e',
-      '--code-text': '#e6e5e3',
-      '--hover-bg': 'rgba(230, 229, 227, 0.055)',
-      '--active-bg': 'rgba(230, 229, 227, 0.085)',
-      '--selected-bg': 'rgba(217, 119, 66, 0.2)',
-
-      // Editor
-      '--selection': 'rgba(217, 119, 66, 0.26)',
-      '--cursor': '#e6e5e3',
-      '--md-heading': '#efece7',
-      '--md-strong': '#f2efea',
-      '--md-em': '#e6e5e3',
-      '--md-link': '#d97742',
-      '--md-url': '#c99566',
-      '--md-quote': '#a6a49f',
-      '--md-list': '#e6e5e3',
-      '--md-meta': '#8a8986',
-      '--md-keyword': '#d97742',
-      '--md-code': '#d9a06b',
-      '--quote-bg': '#1d1c1b',
-      '--quote-border': '#33312e',
-      '--divider-bg': '#282828',
-      ...DARK_SHADOWS
-    }
+    vars: paletteVars({
+      bg: '#141414',
+      panel: '#191919',
+      text: '#e6e5e3',
+      muted: '#8a8986',
+      accent: '#d97742',
+      border: '#282828',
+      code: '#201f1e',
+      quote: '#1d1c1b',
+      isDark: true
+    })
   },
   {
-    id: 'octarineLight',
-    label: 'Octarine Light',
+    id: 'warmPaperLight',
+    label: 'Warm Paper Light',
     kind: 'light',
-    vars: {
-      // Surfaces
-      '--bg': '#f3f1ec',
-      '--panel-bg': '#faf9f6',
-      '--sidebar-bg': '#f3f1ec',
-      '--agent-bg': '#f3f1ec',
-      '--surface-elevated': '#eae7e0',
-      '--paper': '#faf9f6',
-      '--card-bg': '#faf9f6',
-      '--canvas': '#faf9f6',
-      '--elevated': '#eae7e0',
-      '--app-bg': '#f3f1ec',
-      '--control-bg': '#eae7e0',
-      '--control-hover': '#e3dfd7',
-      '--control-text': '#1f1f1e',
-      '--field-bg': '#f0ede7',
-      '--field-line': '#e4e1da',
-      '--glass': 'rgba(250, 249, 246, 0.86)',
-
-      // Text
-      '--text': '#1f1f1e',
-      '--text-2': '#35342f',
-      '--muted': '#787671',
-      '--muted-2': '#5f5d58',
-      '--muted-3': '#a8a49b',
-
-      // Accent & status
-      '--accent': '#c86432',
-      '--accent-soft': 'rgba(200, 100, 50, 0.1)',
-      '--accent-soft-2': 'rgba(200, 100, 50, 0.18)',
-      '--accent-ink': '#fffaf5',
-      '--ok': '#5c8a4c',
-      '--warn': '#b47d24',
-      '--danger': '#b85442',
-      '--user-bubble': '#2b2723',
-
-      // Lines & fills
-      '--border': '#e4e1da',
-      '--border-strong': '#d9d5cc',
-      '--hairline': '#e4e1da',
-      '--code-bg': '#efede6',
-      '--code-text': '#2b2a26',
-      '--hover-bg': 'rgba(31, 31, 30, 0.05)',
-      '--active-bg': 'rgba(31, 31, 30, 0.085)',
-      '--selected-bg': 'rgba(200, 100, 50, 0.15)',
-
-      // Editor
-      '--selection': 'rgba(200, 100, 50, 0.2)',
-      '--cursor': '#1f1f1e',
-      '--md-heading': '#1f1f1e',
-      '--md-strong': '#151514',
-      '--md-em': '#1f1f1e',
-      '--md-link': '#c86432',
-      '--md-url': '#a05a35',
-      '--md-quote': '#5f5d58',
-      '--md-list': '#1f1f1e',
-      '--md-meta': '#787671',
-      '--md-keyword': '#c86432',
-      '--md-code': '#a9552b',
-      '--quote-bg': '#f4f1ea',
-      '--quote-border': '#e0dcd3',
-      '--divider-bg': '#e4e1da',
-      ...LIGHT_SHADOWS
-    }
+    vars: paletteVars({
+      bg: '#f3f1ec',
+      panel: '#faf9f6',
+      text: '#1f1f1e',
+      muted: '#787671',
+      accent: '#c86432',
+      border: '#e4e1da',
+      code: '#efede6',
+      quote: '#f4f1ea',
+      isDark: false
+    })
+  },
+  {
+    id: 'midnightSlate',
+    label: 'Midnight Slate',
+    kind: 'dark',
+    vars: paletteVars({
+      bg: '#12161c',
+      panel: '#171c24',
+      text: '#dfe4ea',
+      muted: '#7d8794',
+      accent: '#7f9cc4',
+      border: '#242c37',
+      code: '#1b222b',
+      quote: '#1a212a',
+      isDark: true
+    })
+  },
+  {
+    id: 'sageMist',
+    label: 'Sage Mist',
+    kind: 'light',
+    vars: paletteVars({
+      bg: '#eef1ea',
+      panel: '#f7f8f3',
+      text: '#232a22',
+      muted: '#6f786c',
+      accent: '#6f8f63',
+      border: '#dde2d6',
+      code: '#e9ede4',
+      quote: '#f0f3ea',
+      isDark: false
+    })
+  },
+  {
+    id: 'solarizedWarmLight',
+    label: 'Solarized Warm Light',
+    kind: 'light',
+    vars: paletteVars({
+      bg: '#f7f1e3',
+      panel: '#fdf8ec',
+      text: '#3b3226',
+      muted: '#8a7a63',
+      accent: '#b58900',
+      border: '#e8ddc6',
+      code: '#f2ead8',
+      quote: '#f6efdf',
+      isDark: false
+    })
   }
 ]
 
 export const DEFAULT_THEME = 'octarineDark'
 
+export type ResolvedTheme = ThemeDef & { kind: 'light' | 'dark' }
+
+/** Older ids stay readable so a saved theme never resets unexpectedly. */
+const LEGACY_IDS: Record<string, string> = {
+  octarineLight: 'warmPaperLight'
+}
+
 export function getTheme(id: string): ThemeDef {
-  return THEMES.find((t) => t.id === id) ?? THEMES.find((t) => t.id === DEFAULT_THEME)!
+  const resolved = LEGACY_IDS[id] ?? id
+  return THEMES.find((t) => t.id === resolved) ?? THEMES.find((t) => t.id === DEFAULT_THEME)!
 }
 
 export function nextTheme(currentId: string): ThemeDef {
-  const idx = THEMES.findIndex((t) => t.id === currentId)
+  const idx = THEMES.findIndex((t) => t.id === getTheme(currentId).id)
   return THEMES[(idx + 1) % THEMES.length]
 }
 
+/** The concrete light/dark palette a theme id means right now. */
+export function resolveTheme(id: string): ResolvedTheme {
+  const theme = getTheme(id)
+  if (theme.kind !== 'system') return theme as ResolvedTheme
+  const dark =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false
+  return getTheme(dark ? 'octarineDark' : 'warmPaperLight') as ResolvedTheme
+}
+
 // ---- derived tokens -------------------------------------------------------
-// Themes define the palette; these tokens are computed so any future theme gets
-// the same hierarchy for free. Anything a theme states explicitly wins, which is
-// how Octarine pins its three surfaces exactly.
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '')
   const v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
@@ -232,9 +281,6 @@ function deriveTokens(v: Record<string, string>): Record<string, string> {
     '--text-2': text,
     '--muted-2': muted,
     '--muted-3': mixHex(muted, panel, 0.45),
-    // The navigator and the agent panel are one material. They share a surface
-    // with the window's own background so the document feels like the only
-    // object in the room.
     '--sidebar-bg': bg,
     '--agent-bg': bg,
     '--surface-elevated': panel,
@@ -262,15 +308,17 @@ function deriveTokens(v: Record<string, string>): Record<string, string> {
   }
 }
 
-export function applyTheme(id: string): ThemeDef {
-  const theme = getTheme(id)
+export function applyTheme(id: string): ResolvedTheme {
+  const theme = resolveTheme(id)
   const root = document.documentElement
   root.style.colorScheme = theme.kind === 'dark' ? 'dark' : 'light'
   const all = { ...deriveTokens(theme.vars), ...theme.vars }
   for (const [key, value] of Object.entries(all)) {
     root.style.setProperty(key, value)
   }
-  root.dataset.theme = theme.id
+  // Keep the user's choice (`system` included) as the identity, but publish the
+  // resolved palette so every descendant can branch on the real appearance.
+  root.dataset.theme = getTheme(id).id
   root.dataset.themeKind = theme.kind
   return theme
 }

@@ -1,4 +1,4 @@
-import { iconEl } from './icons'
+import { applyIcon, iconEl, type IconName } from './icons'
 
 // Which branches the user expanded. Everything starts COLLAPSED (folders,
 // subfolders, pages with children — every level), and the set survives tree
@@ -15,10 +15,40 @@ export interface SidebarNode {
   children?: SidebarNode[]
 }
 
-export function setupSidebar(
-  root: SidebarNode,
-  opts: { currentRel: string | null; onOpen: (rel: string, kind: string, newTab?: boolean) => void }
-): void {
+export interface SidebarOpts {
+  currentRel: string | null
+  onOpen: (rel: string, kind: string, newTab?: boolean) => void
+  /** Notes mode hides the folders that have their own surface: Daily and Weekly
+   *  notes live on the calendar, Templates has its own mode, and Inbox is a
+   *  workspace view. */
+  notesOnly?: boolean
+}
+
+const ATTACHMENT_FOLDERS = /^(attachments?|assets?|media|files|images)$/i
+const HIDDEN_ROOT = /^(Daily|Weekly|Templates)$/i
+
+/** Should this node appear in the Notes list? */
+function visibleInNotes(node: SidebarNode): boolean {
+  const rel = node.relPath.replace(/\\/g, '/')
+  if (/(^|\/)(Daily|Weekly|Templates)\//i.test(rel)) return false
+  if (/(^|\/)Inbox\.md$/i.test(rel)) return false
+  const parts = rel.split('/')
+  if (parts.some((p) => p.startsWith('.') || ATTACHMENT_FOLDERS.test(p))) return false
+  // The root-level folders with a dedicated mode are hidden in Notes only.
+  if (parts.length === 1 && HIDDEN_ROOT.test(parts[0])) return false
+  return true
+}
+
+function iconForNode(node: SidebarNode): IconName {
+  if (node.kind === 'quiz') return 'quiz'
+  if (node.kind === 'folder' || (node.children?.length ?? 0) > 0) return 'folder'
+  if (/^Daily\//i.test(node.relPath) || /^Weekly\//i.test(node.relPath)) return 'calendar'
+  if (node.kind === 'pdf' || node.kind === 'file' || node.kind === 'binary') return 'doc'
+  if (node.kind === 'image') return 'image'
+  return 'doc'
+}
+
+export function setupSidebar(root: SidebarNode, opts: SidebarOpts): void {
   // The current page's ancestors stay expanded so the user always sees where
   // they are; everything else follows the collapsed-by-default rule.
   const expandAncestorsOf = (node: SidebarNode | null): void => {
@@ -32,15 +62,18 @@ export function setupSidebar(
   }
   expandAncestorsOf(root)
   const nav = document.getElementById('page-tree') as HTMLElement
-  const search = document.getElementById('page-search') as HTMLInputElement
-  const query = search.value.trim().toLowerCase()
+  const search = document.getElementById('page-search') as HTMLInputElement | null
+  const query = search?.value.trim().toLowerCase() ?? ''
   nav.innerHTML = ''
+  const notesOnly = opts.notesOnly !== false
+  const visible = (node: SidebarNode): boolean => !notesOnly || visibleInNotes(node)
 
   if (query) {
     // Flat filtered list.
     const flat: SidebarNode[] = []
     const walk = (nodes: SidebarNode[]): void => {
       for (const n of nodes) {
+        if (!visible(n)) continue
         if (n.kind === 'page' || n.kind === 'pdf' || n.kind === 'image' || n.kind === 'quiz') flat.push(n)
         else if (n.children) walk(n.children)
       }
@@ -64,19 +97,25 @@ export function setupSidebar(
   }
 
   // Root page row first, then its children.
-  if (root.kind === 'page') {
+  if (root.kind === 'page' && visible(root)) {
     nav.appendChild(pageRow(root, opts, 0))
     for (const child of root.children ?? []) {
-      nav.appendChild(nodeRow(child, opts, 1))
+      if (visible(child)) nav.appendChild(nodeRow(child, opts, 1))
     }
   } else {
     for (const child of root.children ?? []) {
-      nav.appendChild(nodeRow(child, opts, 0))
+      if (visible(child)) nav.appendChild(nodeRow(child, opts, 0))
     }
+  }
+  if (nav.childElementCount === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'tree-empty'
+    empty.textContent = 'No notes yet'
+    nav.appendChild(empty)
   }
 }
 
-function nodeRow(node: SidebarNode, opts: { currentRel: string | null; onOpen: (rel: string, kind: string, newTab?: boolean) => void }, depth: number): HTMLElement {
+function nodeRow(node: SidebarNode, opts: SidebarOpts, depth: number): HTMLElement {
   // A leaf that falls through to the folder branch renders as an empty
   // collapsible folder with no way to open it, so this list has to name every
   // leaf kind the main process can emit.
@@ -92,10 +131,13 @@ function nodeRow(node: SidebarNode, opts: { currentRel: string | null; onOpen: (
   })
   const summary = document.createElement('summary')
   summary.style.paddingLeft = `${depth * 16}px`
+  const folderIcon = document.createElement('span')
+  folderIcon.className = 'tree-icon'
+  folderIcon.append(iconEl('folder', 13))
   const label = document.createElement('span')
   label.className = 'tree-label'
   label.textContent = node.name
-  summary.appendChild(label)
+  summary.append(folderIcon, label)
   const del = document.createElement('button')
   del.className = 'tree-delete'
   del.title = 'Delete folder and everything inside'
@@ -104,7 +146,7 @@ function nodeRow(node: SidebarNode, opts: { currentRel: string | null; onOpen: (
     e.preventDefault()
     e.stopPropagation()
     void (async () => {
-      if (!window.confirm(`Delete folder "${node.name}" and everything inside it?`)) return
+      if (!window.confirm(`Delete folder "${node.name}" and everything inside it? It will move to the macOS Trash.`)) return
       await window.api.wsDelete(node.relPath)
       window.dispatchEvent(new CustomEvent('yestion:tree-changed'))
     })()
@@ -121,14 +163,14 @@ function nodeRow(node: SidebarNode, opts: { currentRel: string | null; onOpen: (
 
 function pageRow(
   page: SidebarNode,
-  opts: { currentRel: string | null; onOpen: (rel: string, kind: string, newTab?: boolean) => void },
+  opts: SidebarOpts,
   depth = 0
 ): HTMLElement {
   const row = document.createElement('div')
   row.className = 'tree-item' + (opts.currentRel === page.relPath ? ' active' : '')
   const icon = document.createElement('span')
   icon.className = 'tree-icon'
-  icon.textContent = page.icon ?? ''
+  applyIcon(icon, null, iconForNode(page), 14)
   const label = document.createElement('span')
   label.className = 'tree-label'
   label.textContent = page.title ?? page.name
@@ -148,7 +190,7 @@ function pageRow(
     del.addEventListener('click', (e) => {
       e.stopPropagation()
       void (async () => {
-        if (!window.confirm(`Delete "${page.title ?? page.name}"? This deletes the file.`)) return
+        if (!window.confirm(`Move "${page.title ?? page.name}" to the macOS Trash?`)) return
         await window.api.wsDelete(page.relPath)
         window.dispatchEvent(new CustomEvent('yestion:tree-changed'))
       })()

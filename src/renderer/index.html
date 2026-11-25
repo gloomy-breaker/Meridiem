@@ -101,24 +101,15 @@
             <div id="pinned-list" class="pinned-list"></div>
           </div>
           <div id="notes-view" class="sidebar-view-body">
-            <details id="section-open-editors" class="sidebar-section" open>
-              <summary>Open editors</summary>
-              <div id="open-editors" class="open-editors"></div>
-            </details>
-            <details id="section-tree" class="sidebar-section" open>
-              <summary><span id="sidebar-ws-name" class="sidebar-ws-name">Workspace</span></summary>
-              <div class="sidebar-actions">
-                <input id="page-search" class="sidebar-search" placeholder="Filter pages" />
-                <button id="new-root-page" class="icon-btn" title="New page in workspace root (⌘⇧N)">
-                  <svg class="ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5v13"/><path d="M5.5 12h13"/></svg>
-                </button>
-              </div>
-              <nav id="page-tree" class="page-tree"></nav>
-            </details>
-            <details id="section-outline" class="sidebar-section">
-              <summary>Outline</summary>
-              <div id="page-outline" class="page-outline"></div>
-            </details>
+            <div class="sidebar-mini-head notes-head">
+              <span>Notes</span>
+              <button id="new-root-page" class="sidebar-mini-btn" title="New page in workspace root (⌘⇧N)">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5.5v13"/><path d="M5.5 12h13"/></svg>
+              </button>
+            </div>
+            <input id="page-search" class="sidebar-search" placeholder="Filter notes" hidden />
+            <nav id="page-tree" class="page-tree"></nav>
+            <div id="page-outline" class="page-outline" hidden></div>
           </div>
           <div id="templates-view" class="sidebar-view-body" hidden>
             <div class="sidebar-mini-head">
@@ -140,23 +131,8 @@
           </div>
         </div>
         <div class="sidebar-calendar">
-          <div class="sidebar-theme-row">
-            <label for="theme-select">Theme</label>
-            <select id="theme-select" class="theme-select" title="Theme"></select>
-          </div>
           <div id="mini-calendar" class="mini-calendar"></div>
         </div>
-        <footer class="sidebar-footer">
-          <button id="new-page-btn" class="new-page-btn">
-            <svg class="ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5v13"/><path d="M5.5 12h13"/></svg>
-            <span>New page</span>
-          </button>
-          <div class="footer-icons">
-            <button id="open-in-finder" class="icon-btn" title="Reveal workspace in Finder">
-              <svg class="ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 7.1A1.9 1.9 0 0 1 5.1 5.2h3.4a1 1 0 0 1 .8.4l1.3 1.7h8.3a1.9 1.9 0 0 1 1.9 1.9v7.7a1.9 1.9 0 0 1-1.9 1.9H5.1a1.9 1.9 0 0 1-1.9-1.9z"/></svg>
-            </button>
-          </div>
-        </footer>
       </aside>
       <div id="sidebar-resizer" class="resizer resizer-sidebar" title="Drag to resize sidebar"></div>
 
@@ -189,59 +165,6 @@
           <button id="find-next" class="find-btn" title="Next match (Enter)">↓</button>
           <button id="find-close" class="find-btn" title="Close (Esc)">✕</button>
         </div>
-        <div id="crumb-bar" class="crumb-bar" hidden>
-          <div id="breadcrumbs" class="breadcrumbs"></div>
-          <span class="crumb-right">
-            <select id="font-select" class="topbar-select" title="Text font"></select>
-            <select id="size-select" class="topbar-select" title="Text size (rendered text; the column width stays the same)"></select>
-            <button id="pin-note-btn" class="ghost-btn crumb-icon-btn" title="Pin to sidebar">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.2 4.2h5.6l-.8 5.1 3.2 2.9H6.8l3.2-2.9z"/><path d="M12 12.2v7.6"/></svg>
-            </button>
-            <button id="crumb-focus-btn" class="ghost-btn crumb-icon-btn" title="Focus mode">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H5.5A1.5 1.5 0 0 0 4 5.5V9"/><path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9"/><path d="M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/></svg>
-            </button>
-            <button id="export-pdf-btn" class="ghost-btn" title="Export this page as a PDF">PDF</button>
-            <div id="export-menu" class="export-menu" hidden>
-              <div class="export-row-label">Margins</div>
-              <div class="export-seg" id="export-margins">
-                <button type="button" class="export-seg-btn" data-margin="thin">Thin</button>
-                <button type="button" class="export-seg-btn" data-margin="medium">Medium</button>
-                <button type="button" class="export-seg-btn" data-margin="wide">Wide</button>
-              </div>
-              <label class="export-check">
-                <input type="checkbox" id="export-title" />
-                <span>Include title</span>
-              </label>
-              <label class="export-check">
-                <input type="checkbox" id="export-icon" />
-                <span>Include icon</span>
-              </label>
-              <button id="export-run" class="btn primary export-run">Export PDF…</button>
-            </div>
-            <span id="save-status" class="save-status"></span>
-            <button id="page-mode-btn" class="ghost-btn" title="Live PDF preview — the real export pagination (⌘⇧P)">Preview</button>
-            <button id="toggle-source-btn" class="ghost-btn" title="Toggle source view (⌘⇧E)">Source</button>
-            <button id="page-view-btn" class="ghost-btn ghost-btn-menu" title="What to show in the page">
-              Display <span class="chev"></span>
-            </button>
-            <div id="page-view-menu" class="page-view-menu" hidden>
-              <label class="export-check">
-                <input type="checkbox" id="pv-title" />
-                <span>Show title</span>
-              </label>
-              <label class="export-check">
-                <input type="checkbox" id="pv-icon" />
-                <span>Show icon</span>
-              </label>
-              <div class="export-row-label">Margins</div>
-              <div class="export-seg">
-                <button type="button" class="export-seg-btn" data-margin="thin">Thin</button>
-                <button type="button" class="export-seg-btn" data-margin="medium">Medium</button>
-                <button type="button" class="export-seg-btn" data-margin="wide">Wide</button>
-              </div>
-            </div>
-          </span>
-        </div>
         </div>
         <div id="content-row" class="content-row">
           <div id="content-left" class="content-slot active">
@@ -273,17 +196,81 @@
         <div id="page-view" class="page-view" hidden>
           <div class="page-scroll">
             <header class="page-header">
-              <div id="page-hover-actions" class="page-hover-actions">
-                <button id="action-add-icon" class="page-action-btn">Icon</button>
-                <button id="action-copy-path" class="page-action-btn">Copy path</button>
+              <div class="page-head-main">
+                <div id="breadcrumbs" class="page-context"></div>
+                <input id="page-title" class="page-title" placeholder="Untitled" spellcheck="false" />
               </div>
-              <button id="page-icon" class="page-icon" title="Set page icon">
-                <svg class="ic" viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.3 3.2H7.4a1.9 1.9 0 0 0-1.9 1.9v13.8a1.9 1.9 0 0 0 1.9 1.9h9.2a1.9 1.9 0 0 0 1.9-1.9V7.5z"/><path d="M14.3 3.2v4.3h4.2"/><path d="M9.3 13.7h5.4"/><path d="M9.3 17.1h3.5"/></svg>
-              </button>
-              <input id="page-title" class="page-title" placeholder="Untitled" spellcheck="false" />
+              <div class="page-head-pill">
+                <button id="pin-note-btn" class="page-pill-btn" title="Pin to sidebar">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.2 4.2h5.6l-.8 5.1 3.2 2.9H6.8l3.2-2.9z"/><path d="M12 12.2v7.6"/></svg>
+                </button>
+                <button id="crumb-focus-btn" class="page-pill-btn" title="Focus mode">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H5.5A1.5 1.5 0 0 0 4 5.5V9"/><path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9"/><path d="M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/></svg>
+                </button>
+                <button id="export-pdf-btn" class="page-pill-btn" title="Export this page as a PDF">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.8v11.4"/><path d="M7.5 10.7 12 15.2l4.5-4.5"/><path d="M4.6 19.6h14.8"/></svg>
+                </button>
+                <button id="page-type-btn" class="page-pill-btn" title="Typography">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 19 9.8 5h1.4L16.5 19"/><path d="M6.7 14.4h7"/><path d="M18.2 19v-5.2"/><path d="M15.6 16.4h5.2"/></svg>
+                </button>
+                <button id="page-more-btn" class="page-pill-btn" title="More">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/></svg>
+                </button>
+
+                <div id="export-menu" class="export-menu" hidden>
+                  <div class="export-row-label">Margins</div>
+                  <div class="export-seg" id="export-margins">
+                    <button type="button" class="export-seg-btn" data-margin="thin">Thin</button>
+                    <button type="button" class="export-seg-btn" data-margin="medium">Medium</button>
+                    <button type="button" class="export-seg-btn" data-margin="wide">Wide</button>
+                  </div>
+                  <label class="export-check">
+                    <input type="checkbox" id="export-title" />
+                    <span>Include title</span>
+                  </label>
+                  <label class="export-check">
+                    <input type="checkbox" id="export-icon" />
+                    <span>Include icon</span>
+                  </label>
+                  <button id="export-run" class="btn primary export-run">Export PDF…</button>
+                </div>
+
+                <div id="page-type-menu" class="page-pill-menu" hidden>
+                  <select id="font-select" class="topbar-select" title="Text font"></select>
+                  <select id="size-select" class="topbar-select" title="Text size"></select>
+                </div>
+
+                <div id="page-more-menu" class="page-pill-menu" hidden>
+                  <span id="save-status" class="save-status"></span>
+                  <button id="page-mode-btn" class="ghost-btn" title="Live PDF preview (⌘⇧P)">Preview</button>
+                  <button id="toggle-source-btn" class="ghost-btn" title="Toggle source view (⌘⇧E)">Source</button>
+                  <button id="page-view-btn" class="ghost-btn ghost-btn-menu" title="What to show in the page">
+                    Display <span class="chev"></span>
+                  </button>
+                  <div id="page-view-menu" class="page-view-menu" hidden>
+                    <label class="export-check">
+                      <input type="checkbox" id="pv-title" />
+                      <span>Show title</span>
+                    </label>
+                    <label class="export-check">
+                      <input type="checkbox" id="pv-icon" />
+                      <span>Show icon</span>
+                    </label>
+                    <div class="export-row-label">Margins</div>
+                    <div class="export-seg">
+                      <button type="button" class="export-seg-btn" data-margin="thin">Thin</button>
+                      <button type="button" class="export-seg-btn" data-margin="medium">Medium</button>
+                      <button type="button" class="export-seg-btn" data-margin="wide">Wide</button>
+                    </div>
+                  </div>
+                </div>
+                <button id="page-icon" class="page-icon" title="Set page icon" hidden></button>
+              </div>
             </header>
-            <div id="editor-mount" class="editor-mount"></div>
-            <div id="code-mount" class="code-mount" hidden></div>
+            <div class="page-reading-column">
+              <div id="editor-mount" class="editor-mount"></div>
+              <div id="code-mount" class="code-mount" hidden></div>
+            </div>
           </div>
           <!-- Sits outside .page-scroll so it stays put while the page scrolls.
                It is a sibling of the scroll area rather than a float: nothing
@@ -656,95 +643,165 @@
     </div>
 
     <div id="settings-modal" class="modal-backdrop" hidden>
-      <div class="modal">
-        <div class="modal-head">
-          <h2>Settings</h2>
-          <button id="settings-close" class="btn small">Close</button>
-        </div>
-        <section class="settings-group">
-          <h3>Workspace</h3>
-          <div class="settings-row">
-            <span id="settings-workspace-path" class="muted">No workspace</span>
-            <button id="settings-choose-workspace" class="btn small">Open…</button>
+      <div class="modal settings-modal">
+        <aside class="settings-nav">
+          <div class="settings-nav-head">
+            <h2>Settings</h2>
+            <span class="settings-kbd">⌘,</span>
           </div>
-          <div class="settings-row">
-            <label for="settings-theme">Theme</label>
-            <select id="settings-theme"></select>
+          <button type="button" class="settings-tab is-active" data-settings-tab="appearance">
+            <span class="settings-tab-label">Appearance &amp; Themes</span>
+          </button>
+          <button type="button" class="settings-tab" data-settings-tab="editor">
+            <span class="settings-tab-label">Editor &amp; Typography</span>
+          </button>
+          <button type="button" class="settings-tab" data-settings-tab="keybinds">
+            <span class="settings-tab-label">Keybinds</span>
+          </button>
+          <button type="button" class="settings-tab" data-settings-tab="ai">
+            <span class="settings-tab-label">AI Harness</span>
+          </button>
+          <button type="button" class="settings-tab" data-settings-tab="about">
+            <span class="settings-tab-label">About</span>
+          </button>
+          <div class="settings-nav-foot">
+            <button id="settings-close" class="btn small">Close</button>
           </div>
-          <div class="settings-row">
-            <label for="settings-font">Font</label>
-            <select id="settings-font"></select>
+        </aside>
+        <section class="settings-content">
+          <div class="settings-pane" data-settings-pane="appearance">
+            <header class="settings-pane-head">
+              <h3>Appearance &amp; Themes</h3>
+              <p>Follow macOS or pick a calm preset. Every surface, modal and exam inherits these tokens.</p>
+            </header>
+            <section class="settings-group">
+              <div class="settings-row">
+                <span id="settings-workspace-path" class="muted">No workspace</span>
+                <button id="settings-choose-workspace" class="btn small">Open…</button>
+              </div>
+              <div class="settings-row">
+                <label for="settings-theme">Theme</label>
+                <select id="settings-theme"></select>
+              </div>
+              <div id="settings-theme-presets" class="theme-presets"></div>
+            </section>
           </div>
-          <div class="settings-row">
-            <label for="settings-size">Size</label>
-            <select id="settings-size"></select>
-          </div>
-          <div class="settings-row">
-            <label for="settings-counting">Counting</label>
-            <select id="settings-counting">
-              <option value="words">Words</option>
-              <option value="asian">Asian characters</option>
-            </select>
-          </div>
-        </section>
-        <section class="settings-group" id="settings-harness-group">
-          <h3>AI harness</h3>
-          <p class="muted small">
-            Controls the assistant and AI exam marking. <strong>Off</strong> starts no agent and uses no AI memory.
-          </p>
-          <div class="settings-row">
-            <label for="settings-harness">Harness</label>
-            <select id="settings-harness"></select>
-          </div>
-          <div id="settings-harness-detail" class="harness-detail"></div>
-        </section>
-        <section class="settings-group" id="settings-providers-group">
-          <h3>Providers</h3>
-          <p class="muted small">
-            Keys are stored in your macOS keychain. Anything found in <code>~/.pi/agent</code> is imported on first run.
-          </p>
-          <div id="settings-providers" class="settings-list"></div>
-          <div class="settings-row">
-            <button id="settings-add-provider" class="btn small">Add provider</button>
-            <button id="settings-add-ollama" class="btn small">Add Ollama</button>
-            <button id="settings-import-pi" class="btn small">Import from ~/.pi/agent</button>
-          </div>
-        </section>
 
-        <section class="settings-group" id="settings-models-group">
-          <h3>Models</h3>
-          <p class="muted small">Only the models listed here appear in the app — nothing is fetched from a catalog.</p>
-          <div id="settings-models" class="settings-list"></div>
-          <div class="settings-row">
-            <button id="settings-add-model" class="btn small">Add model</button>
-            <button id="settings-import-ollama" class="btn small">Import from Ollama</button>
+          <div class="settings-pane" data-settings-pane="editor" hidden>
+            <header class="settings-pane-head">
+              <h3>Editor &amp; Typography</h3>
+              <p>The reading column stays 700px wide; these control the text inside it.</p>
+            </header>
+            <section class="settings-group">
+              <div class="settings-row">
+                <label for="settings-font">Font</label>
+                <select id="settings-font"></select>
+              </div>
+              <div class="settings-row">
+                <label for="settings-size">Size</label>
+                <select id="settings-size"></select>
+              </div>
+              <div class="settings-row">
+                <label for="settings-counting">Counting</label>
+                <select id="settings-counting">
+                  <option value="words">Words</option>
+                  <option value="asian">Asian characters</option>
+                </select>
+              </div>
+            </section>
           </div>
-        </section>
 
-        <section class="settings-group" id="settings-agent-group">
-          <h3>Agent</h3>
-          <div class="settings-row">
-            <label for="settings-default-model">Model</label>
-            <select id="settings-default-model"></select>
+          <div class="settings-pane" data-settings-pane="keybinds" hidden>
+            <header class="settings-pane-head">
+              <h3>Keybinds</h3>
+              <p>Click any shortcut pill and press a new combination. Conflicts are caught before they are saved.</p>
+            </header>
+            <div id="settings-keybinds" class="keybind-list"></div>
           </div>
-          <div class="settings-row">
-            <label for="settings-thinking">Thinking</label>
-            <select id="settings-thinking">
-              <option value="off">off</option>
-              <option value="minimal">minimal</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-              <option value="xhigh">xhigh</option>
-              <option value="max">max</option>
-            </select>
+
+          <div class="settings-pane" data-settings-pane="ai" hidden>
+            <header class="settings-pane-head">
+              <h3>AI Harness</h3>
+              <p>Controls the assistant and AI exam marking. <strong>Off</strong> starts no agent and uses no AI memory.</p>
+            </header>
+            <section class="settings-group" id="settings-harness-group">
+              <div class="settings-row">
+                <label for="settings-harness">Harness</label>
+                <select id="settings-harness"></select>
+              </div>
+              <div id="settings-harness-detail" class="harness-detail"></div>
+            </section>
+            <section class="settings-group" id="settings-providers-group">
+              <h3>Providers</h3>
+              <p class="muted small">
+                Keys are stored in your macOS keychain. Anything found in <code>~/.pi/agent</code> is imported on first run.
+              </p>
+              <div id="settings-providers" class="settings-list"></div>
+              <div class="settings-row">
+                <button id="settings-add-provider" class="btn small">Add provider</button>
+                <button id="settings-add-ollama" class="btn small">Add Ollama</button>
+                <button id="settings-import-pi" class="btn small">Import from ~/.pi/agent</button>
+              </div>
+            </section>
+
+            <section class="settings-group" id="settings-models-group">
+              <h3>Models</h3>
+              <p class="muted small">Only the models listed here appear in the app — nothing is fetched from a catalog.</p>
+              <div id="settings-models" class="settings-list"></div>
+              <div class="settings-row">
+                <button id="settings-add-model" class="btn small">Add model</button>
+                <button id="settings-import-ollama" class="btn small">Import from Ollama</button>
+              </div>
+            </section>
+
+            <section class="settings-group" id="settings-agent-group">
+              <h3>Agent</h3>
+              <div class="settings-row">
+                <label for="settings-default-model">Model</label>
+                <select id="settings-default-model"></select>
+              </div>
+              <div class="settings-row">
+                <label for="settings-thinking">Thinking</label>
+                <select id="settings-thinking">
+                  <option value="off">off</option>
+                  <option value="minimal">minimal</option>
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                  <option value="xhigh">xhigh</option>
+                  <option value="max">max</option>
+                </select>
+              </div>
+              <div id="settings-status" class="muted small"></div>
+            </section>
           </div>
-          <div id="settings-status" class="muted small"></div>
+
+          <div class="settings-pane" data-settings-pane="about" hidden>
+            <header class="settings-pane-head">
+              <h3>About Meridiem</h3>
+              <p>A calm, local-first academic workspace and active-recall studio for macOS.</p>
+            </header>
+            <section class="settings-group">
+              <div class="settings-row">
+                <span>Version</span>
+                <span class="muted">1.0.0</span>
+              </div>
+              <div class="settings-row">
+                <span>Data</span>
+                <span class="muted small">Plain .md and .qz files in a folder you own.</span>
+              </div>
+              <div class="settings-row">
+                <span>License</span>
+                <span class="muted small">MIT · based on Yestion</span>
+              </div>
+            </section>
+          </div>
+
+          <footer class="settings-actions">
+            <button id="settings-cancel" class="btn">Cancel</button>
+            <button id="settings-save" class="btn primary">Save</button>
+          </footer>
         </section>
-        <footer class="modal-footer">
-          <button id="settings-cancel" class="btn">Cancel</button>
-          <button id="settings-save" class="btn primary">Save</button>
-        </footer>
       </div>
     </div>
 

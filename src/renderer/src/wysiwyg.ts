@@ -12,7 +12,7 @@ import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import MarkdownIt from 'markdown-it'
 import { DOMParser as PMDOMParser } from '@tiptap/pm/model'
-import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state'
+import { NodeSelection, Plugin, TextSelection, type EditorState } from '@tiptap/pm/state'
 import type { MarkdownSerializerState } from 'prosemirror-markdown'
 import type { Node as PMNode } from 'prosemirror-model'
 import { Fragment as PMFragment } from 'prosemirror-model'
@@ -27,15 +27,10 @@ import { applyIcon, iconEl, iconSvg, type IconName } from './icons'
 // gets its own emoji when it has one and the app's page outline when it
 // doesn't — an iconless page used to render with nothing there at all, which
 // is what made those references look broken next to the rest.
-function refGlyph(icon: string | null | undefined, fallback: IconName, size = 15): HTMLElement {
+function refGlyph(_icon: string | null | undefined, fallback: IconName, size = 15): HTMLElement {
   const g = document.createElement('span')
   g.className = 'chip-glyph'
-  if (icon) {
-    g.classList.add('is-emoji')
-    g.textContent = icon
-  } else {
-    g.appendChild(iconEl(fallback, size))
-  }
+  g.appendChild(iconEl(fallback, size))
   return g
 }
 
@@ -2710,6 +2705,12 @@ export interface RichEditor {
   focus: () => void
   /** Read-only mirrors (the split pane) turn off editing but keep rendering. */
   setEditable: (editable: boolean) => void
+  /** Selection is remembered per tab, so switching back lands on the caret. */
+  getSelection: () => { from: number; to: number }
+  setSelection: (selection: { from: number; to: number }) => void
+  /** Whole editor state (doc + selection + undo history) for a tab. */
+  getState: () => EditorState
+  setState: (state: EditorState) => void
 }
 
 /**
@@ -3454,7 +3455,17 @@ export function createRichEditor(
       hideMenu()
       editor.commands.setContent(repairTables(relaxCjkEmphasis(markdown)), { emitUpdate: false })
     },
-    focus: () => editor.commands.focus()
+    focus: () => editor.commands.focus(),
+    getSelection: () => ({ from: editor.state.selection.from, to: editor.state.selection.to }),
+    setSelection: (selection: { from: number; to: number }) => {
+      const size = editor.state.doc.content.size
+      editor.commands.setTextSelection({
+        from: Math.max(0, Math.min(selection.from, size)),
+        to: Math.max(0, Math.min(selection.to, size))
+      })
+    },
+    getState: () => editor.view.state,
+    setState: (state: EditorState) => editor.view.updateState(state)
   }
 }
 

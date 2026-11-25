@@ -46,6 +46,7 @@ export const FLOAT_SELECTOR = [
   '.agent-recent-pop',
   '.export-menu',
   '.page-view-menu',
+  '.page-pill-menu',
   '.page-picker',
   '.table-size-picker',
   '.table-toolbar',

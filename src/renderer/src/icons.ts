@@ -161,23 +161,17 @@ export function iconEl(name: IconName, size = 15, strokeWidth = 1.8): SVGSVGElem
 }
 
 /**
- * Fill an icon slot: the user's emoji if they set one, otherwise line art.
- *
- * Used by every place that shows a *page's* icon — the tab strip, the split
- * pane header, the breadcrumb popover, the search results. The emoji is the
- * user's own choice and stays; `fallback` is what an icon-less page gets
- * instead of the app's old hardcoded 📄.
+ * Fill an icon slot with the app's line art. Emojis are never drawn in chrome:
+ * a page's front-matter icon is still preserved on disk, but the UI stays one
+ * stroke weight and one optical size everywhere. `fallback` is chosen by the
+ * caller from the item's kind.
  */
 export function applyIcon(
   el: HTMLElement,
-  emoji: string | null | undefined,
+  _emoji: string | null | undefined,
   fallback: IconName,
   size = 14
 ): void {
-  el.classList.toggle('is-emoji', !!emoji)
-  if (emoji) {
-    el.textContent = emoji
-    return
-  }
+  el.classList.remove('is-emoji')
   el.replaceChildren(iconEl(fallback, size))
 }

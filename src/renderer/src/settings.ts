@@ -9,6 +9,14 @@
 // ---------------------------------------------------------------------------
 import { THEMES } from './themes'
 import { fillFontSelect, resolveFontId } from './fonts'
+import { iconEl, type IconName } from './icons'
+import {
+  comboFromEvent,
+  displayCombo,
+  keybinds,
+  setKeybindRecording,
+  type KeybindDef
+} from './keybinds'
 
 interface ModelInputs {
   text: boolean
@@ -84,9 +92,11 @@ export function setupSettings(opts: SettingsOpts): { show: () => void; close: ()
 
   // Theme options
   for (const group of [
+    ['System', THEMES.filter((t) => t.kind === 'system')],
     ['Light', THEMES.filter((t) => t.kind === 'light')],
     ['Dark', THEMES.filter((t) => t.kind === 'dark')]
   ] as const) {
+    if (group[1].length === 0) continue
     const og = document.createElement('optgroup')
     og.label = group[0]
     for (const t of group[1]) {
@@ -98,6 +108,155 @@ export function setupSettings(opts: SettingsOpts): { show: () => void; close: ()
     themeSelect.appendChild(og)
   }
   fillFontSelect(fontSelect, 'default')
+
+  // ---- tabs --------------------------------------------------------------
+  const tabButtons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('[data-settings-tab]')
+  )
+  const panes = Array.from(document.querySelectorAll<HTMLElement>('[data-settings-pane]'))
+  function showTab(id: string): void {
+    for (const btn of tabButtons) btn.classList.toggle('is-active', btn.dataset.settingsTab === id)
+    for (const pane of panes) pane.hidden = pane.dataset.settingsPane !== id
+  }
+  for (const btn of tabButtons) {
+    const icon: Record<string, IconName> = {
+      appearance: 'sliders',
+      editor: 'doc',
+      keybinds: 'list',
+      ai: 'sparkle',
+      about: 'help'
+    }
+    const name = icon[btn.dataset.settingsTab ?? '']
+    if (name) btn.prepend(iconEl(name, 14, 1.5))
+    btn.addEventListener('click', () => {
+      showTab(btn.dataset.settingsTab ?? 'appearance')
+      if (btn.dataset.settingsTab === 'keybinds') renderKeybinds()
+    })
+  }
+
+  // ---- theme preset grid -------------------------------------------------
+  const presetHost = document.getElementById('settings-theme-presets')
+  function paintPresets(): void {
+    if (!presetHost) return
+    presetHost.replaceChildren()
+    for (const theme of THEMES) {
+      const card = document.createElement('button')
+      card.type = 'button'
+      card.className = 'theme-preset' + (theme.id === themeSelect.value ? ' is-active' : '')
+      const swatch = document.createElement('span')
+      swatch.className = 'theme-swatch'
+      const vars = theme.vars
+      swatch.style.background = vars['--bg'] ?? 'transparent'
+      const dot = document.createElement('span')
+      dot.className = 'theme-swatch-dot'
+      dot.style.background = vars['--accent'] ?? 'currentColor'
+      swatch.appendChild(dot)
+      const label = document.createElement('span')
+      label.className = 'theme-preset-label'
+      label.textContent = theme.label
+      card.append(swatch, label)
+      card.addEventListener('click', () => {
+        themeSelect.value = theme.id
+        void window.api.setSettings('theme', theme.id)
+        opts.onThemeChange(theme.id)
+        paintPresets()
+      })
+      presetHost.appendChild(card)
+    }
+  }
+
+  // ---- keybinds ----------------------------------------------------------
+  const keybindHost = document.getElementById('settings-keybinds')
+  function renderKeybinds(): void {
+    if (!keybindHost) return
+    keybindHost.replaceChildren()
+    const actions = document.createElement('div')
+    actions.className = 'keybind-actions'
+    const resetAll = document.createElement('button')
+    resetAll.type = 'button'
+    resetAll.className = 'btn small'
+    resetAll.textContent = 'Reset all to defaults'
+    resetAll.addEventListener('click', () => {
+      keybinds.reset()
+      renderKeybinds()
+    })
+    actions.appendChild(resetAll)
+    keybindHost.appendChild(actions)
+    let currentGroup = ''
+    for (const bind of keybinds.list()) {
+      if (bind.group !== currentGroup) {
+        currentGroup = bind.group
+        const head = document.createElement('div')
+        head.className = 'keybind-group'
+        head.textContent = bind.group
+        keybindHost.appendChild(head)
+      }
+      keybindHost.appendChild(keybindRow(bind))
+    }
+  }
+
+  function keybindRow(bind: KeybindDef): HTMLElement {
+    const row = document.createElement('div')
+    row.className = 'keybind-row'
+    const label = document.createElement('span')
+    label.className = 'keybind-label'
+    label.textContent = bind.label
+    const pill = document.createElement('button')
+    pill.type = 'button'
+    pill.className = 'keybind-pill'
+    pill.textContent = displayCombo(bind.combo)
+    pill.title = 'Click, then press a new combination'
+    const reset = document.createElement('button')
+    reset.type = 'button'
+    reset.className = 'keybind-reset'
+    reset.title = 'Reset to default'
+    reset.textContent = '↺'
+    reset.addEventListener('click', () => {
+      keybinds.reset(bind.id)
+      renderKeybinds()
+    })
+
+    pill.addEventListener('click', () => {
+      if (pill.classList.contains('is-recording')) return
+      pill.classList.add('is-recording')
+      pill.textContent = 'Press keys…'
+      setKeybindRecording(true)
+      const finish = (combo: string | null): void => {
+        window.removeEventListener('keydown', onKey, true)
+        setKeybindRecording(false)
+        pill.classList.remove('is-recording')
+        if (!combo) {
+          renderKeybinds()
+          return
+        }
+        const res = keybinds.set(bind.id, combo)
+        if (!res.ok) {
+          pill.classList.add('is-conflict')
+          pill.textContent = 'Conflict'
+          pill.title = res.conflict ? `Already used by ${res.conflict.label}` : 'Could not set'
+          window.setTimeout(() => renderKeybinds(), 1200)
+          return
+        }
+        renderKeybinds()
+      }
+      const onKey = (event: KeyboardEvent): void => {
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.key === 'Escape') {
+          finish(null)
+          return
+        }
+        const combo = comboFromEvent(event)
+        if (!combo) return
+        finish(combo)
+      }
+      window.addEventListener('keydown', onKey, true)
+    })
+
+    row.append(label, pill, reset)
+    return row
+  }
+
 
   let providers: ProviderConfig[] = []
 
@@ -636,6 +795,7 @@ export function setupSettings(opts: SettingsOpts): { show: () => void; close: ()
   themeSelect.addEventListener('change', () => {
     void window.api.setSettings('theme', themeSelect.value)
     opts.onThemeChange(themeSelect.value)
+    paintPresets()
   })
 
   fontSelect.addEventListener('change', () => {
@@ -672,7 +832,9 @@ export function setupSettings(opts: SettingsOpts): { show: () => void; close: ()
   async function load(): Promise<void> {
     const w = (await window.api.wsGet()).workspace
     workspacePathEl.textContent = w ?? 'No workspace'
-    themeSelect.value = ((await window.api.getSettings('theme')) as string) || 'light'
+    themeSelect.value = ((await window.api.getSettings('theme')) as string) || 'system'
+    paintPresets()
+    renderKeybinds()
     fillFontSelect(fontSelect, (await window.api.getSettings('previewFont')) as string | undefined)
     if (sizeSelect) {
       sizeSelect.value = ((await window.api.getSettings('renderFontSize')) as string) || 'm'
@@ -701,6 +863,7 @@ export function setupSettings(opts: SettingsOpts): { show: () => void; close: ()
 
   function show(): void {
     backdrop.hidden = false
+    showTab('appearance')
     void load()
   }
 

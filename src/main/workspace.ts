@@ -530,7 +530,11 @@ export async function listAllPages(root: string): Promise<{ relPath: string; tit
           out.push({ relPath: `${childRel}/${INDEX}`, title: parsed.title, icon: parsed.icon })
         }
         await walk(childRel)
-      } else if (e.isFile() && ['.md', '.qz'].includes(extname(e.name).toLowerCase())) {
+      } else if (
+        e.isFile() &&
+        ['.md', '.qz'].includes(extname(e.name).toLowerCase()) &&
+        e.name.toLowerCase() !== INDEX
+      ) {
         const parsed = parsePageFile(await fs.readFile(join(abs, e.name), 'utf-8'), e.name.replace(/\.[^.]+$/, ''))
         out.push({ relPath: childRel, title: parsed.title, icon: parsed.icon || (extname(e.name).toLowerCase() === '.qz' ? QUIZ_ICON : '') })
       }

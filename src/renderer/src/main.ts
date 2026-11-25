@@ -1,6 +1,6 @@
 import { createRichEditor, dismissEditorFloats, localFileUrl, onEditorCountChange, readCounts, type RichEditor, type MeridiemPageOpts } from './wysiwyg'
 import { createEditor, type MarkdownEditor } from './editor'
-import { applyTheme, getTheme, nextTheme, THEMES } from './themes'
+import { applyTheme, getTheme, nextTheme, resolveTheme, THEMES } from './themes'
 import { fillFontSelect, fontById, printableStack } from './fonts'
 import { setupOnboarding } from './onboarding'
 import { setupSidebar } from './sidebar'
@@ -17,12 +17,19 @@ import { parseQz } from './qz'
 import { countText, formatCount, type CountMode } from './word-count'
 import {
   collectDailyNotes,
+  dailyTitle,
+  formatDailyDate,
+  relativeDay,
   setupCalendar,
+  shiftDateKey,
   todayKey,
+  weekKeyForDate,
+  weeklyTitle,
   type CalendarHandle,
   type DailyNote
 } from './calendar'
 import { renderWorkspaceMode, type WorkspaceModeId, type WorkspaceViewId } from './workspace-modes'
+import { keybinds } from './keybinds'
 
 // Fonts live in ./fonts.ts (shared with the settings modal).
 
@@ -87,6 +94,27 @@ const modeBodyEl = document.getElementById('mode-body') as HTMLElement
 // ---- state ----
 let currentPage: { relPath: string; absolutePath: string; title: string; icon: string; body: string; dirRel: string } | null = null
 let sourceMode = false
+/** Absolute workspace root, kept for optimistic daily/weekly opens. */
+let workspaceRootCache: string | null = null
+
+const DAILY_REL = /(?:^|\/)Daily\/(\d{4}-\d{2}-\d{2})\.md$/i
+const WEEKLY_REL = /(?:^|\/)Weekly\/(\d{4}-W\d{2})\.md$/i
+
+function dailyKeyOf(relPath: string): string | null {
+  return DAILY_REL.exec(relPath)?.[1] ?? null
+}
+function weeklyKeyOf(relPath: string): string | null {
+  return WEEKLY_REL.exec(relPath)?.[1] ?? null
+}
+
+/** What the header says for a file: dated notes get human titles. */
+function displayTitleFor(relPath: string, fallback: string): string {
+  const daily = dailyKeyOf(relPath)
+  if (daily) return dailyTitle(daily)
+  const weekly = weeklyKeyOf(relPath)
+  if (weekly) return weeklyTitle(weekly)
+  return fallback
+}
 
 // ---- word count ----
 // The mode is a display preference, not a property of the page: a student who
@@ -461,6 +489,16 @@ window.api.onPageMoved((moves) => {
       scrollMemory.delete(move.from)
       scrollMemory.set(move.to, remembered)
     }
+    const rememberedState = editorStateMemory.get(move.from)
+    if (rememberedState) {
+      editorStateMemory.delete(move.from)
+      editorStateMemory.set(move.to, rememberedState)
+    }
+    const rememberedSelection = selectionMemory.get(move.from)
+    if (rememberedSelection) {
+      selectionMemory.delete(move.from)
+      selectionMemory.set(move.to, rememberedSelection)
+    }
     if (splitRel === move.from) splitRel = move.to
   }
   renderTabs()
@@ -532,6 +570,7 @@ window.api.onWsExternalChange((rel) => {
     currentPage = { ...fresh, dirRel: dirOf(fresh.relPath) }
     paintPageIcon(fresh.icon)
     pageTitleEl.value = fresh.title
+    editorStateMemory.delete(currentPage.relPath)
     loadIntoEditors(fresh.body)
     setSaveStatus('')
   })()
@@ -550,7 +589,7 @@ const richEditor: RichEditor = createRichEditor(richEditorEl, '', () => {
 const codeEditor: MarkdownEditor = createEditor(
   codeMount,
   '',
-  getTheme('light').kind,
+  resolveTheme('light').kind,
   () => {
     if (programmatic) return
     docSource = 'code'
@@ -586,8 +625,9 @@ async function openPageByRel(relPath: string, opts: { tab?: boolean } = {}): Pro
   const seq = ++loadSeq
   const page = await fetchPageEntry(relPath)
   if (!page || seq !== loadSeq) return
-  recordNav({ rel: page.relPath, kind: 'page', title: page.title })
-  currentPage = { ...page, dirRel: dirOf(relPath) }
+  const shownTitle = displayTitleFor(page.relPath, page.title)
+  recordNav({ rel: page.relPath, kind: 'page', title: shownTitle })
+  currentPage = { ...page, title: shownTitle, dirRel: dirOf(relPath) }
   // A freshly loaded page has no unwritten edits.
   editRev.delete(page.relPath)
   savedRev.delete(page.relPath)
@@ -601,12 +641,10 @@ async function openPageByRel(relPath: string, opts: { tab?: boolean } = {}): Pro
   emptyStateEl.hidden = true
   pageLoaderEl.hidden = true
   paintPageIcon(page.icon)
-  pageTitleEl.value = page.title
+  pageTitleEl.value = shownTitle
   markActiveInTree(page.relPath)
   updatePinButton()
-  if (opts.tab !== false) upsertActiveTab({ relPath: page.relPath, kind: 'page', title: page.title, icon: page.icon })
-  ;(document.getElementById('crumb-bar') as HTMLElement).hidden = false
-  // Whatever was floating belonged to the page we just left.
+  if (opts.tab !== false) upsertActiveTab({ relPath: page.relPath, kind: 'page', title: shownTitle, icon: page.icon })
   dismissFloats()
   schedulePrintPreview(200)
   lastPersistedBody.set(page.relPath, page.body)
@@ -618,7 +656,31 @@ async function openPageByRel(relPath: string, opts: { tab?: boolean } = {}): Pro
   codeMount.hidden = true
   editorMount.hidden = false
   ;(document.querySelector('.page-scroll') as HTMLElement).classList.remove('split-view')
-  loadIntoEditors(page.body)
+  const rememberedState = editorStateMemory.get(page.relPath)
+  if (rememberedState && viewMode === 'rich') {
+    programmatic = true
+    try {
+      richEditor.setState(rememberedState.state)
+    } catch {
+      loadIntoEditors(rememberedState.markdown || page.body)
+    } finally {
+      programmatic = false
+    }
+    loadedMarkdown = rememberedState.markdown || page.body
+    lastSyncedMd = loadedMarkdown
+    docSource = loadedMarkdown === page.body ? 'loaded' : 'rich'
+    refreshWordCount(true)
+  } else {
+    loadIntoEditors(page.body)
+    const rememberedSelection = selectionMemory.get(page.relPath)
+    if (rememberedSelection && viewMode === 'rich') {
+      try {
+        richEditor.setSelection(rememberedSelection)
+      } catch {
+        /* document shorter than the remembered caret */
+      }
+    }
+  }
   window.scrollTo(0, 0)
 }
 
@@ -934,7 +996,10 @@ async function activateTab(i: number): Promise<void> {
   if (!tab) return
   // Remember where the tab we are leaving was scrolled to, before activeTab
   // moves on to the incoming one.
-  if (i !== activeTab) captureScrollForShownContent()
+  if (i !== activeTab) {
+    captureScrollForShownContent()
+    captureSelectionForShownContent()
+  }
   activeTab = i
   renderTabs()
   persistTabs()
@@ -944,6 +1009,27 @@ async function activateTab(i: number): Promise<void> {
 // Scroll positions per page/file, so switching tabs — or coming back to a page
 // from the tree — lands where the user left off.
 const scrollMemory = new Map<string, number>()
+/** Caret/selection per page, restored after the document is swapped in place. */
+const selectionMemory = new Map<string, { from: number; to: number }>()
+
+function captureSelectionForShownContent(): void {
+  if (pageViewEl.hidden || !currentPage || viewMode !== 'rich') return
+  try {
+    selectionMemory.set(currentPage.relPath, richEditor.getSelection())
+    editorStateMemory.set(currentPage.relPath, {
+      state: richEditor.getState(),
+      markdown: getActiveBody()
+    })
+  } catch {
+    /* editor not mounted yet */
+  }
+}
+
+/** Whole ProseMirror state per tab: document, caret and undo history. */
+const editorStateMemory = new Map<
+  string,
+  { state: ReturnType<RichEditor['getState']>; markdown: string }
+>()
 
 /** Rel path of whatever the visible pane is showing right now. */
 function shownRelPath(): string | null {
@@ -999,10 +1085,20 @@ async function loadTabContent(tab: TabInfo): Promise<void> {
   restoreActiveScroll(scrollForTab(tab))
 }
 
+/** Tabs closed this session, newest last, so ⌘⇧T can bring one back. */
+const closedTabs: { tab: TabInfo; index: number }[] = []
+
 function closeTab(i: number): void {
   if (i < 0 || i >= tabs.length) return
-  if (i !== activeTab) captureScrollForShownContent()
-  tabs.splice(i, 1)
+  if (i !== activeTab) {
+    captureScrollForShownContent()
+    captureSelectionForShownContent()
+  }
+  const [removed] = tabs.splice(i, 1)
+  if (removed) {
+    closedTabs.push({ tab: { ...removed }, index: i })
+    if (closedTabs.length > 40) closedTabs.shift()
+  }
   if (tabs.length === 0) {
     activeTab = 0
     renderTabs()
@@ -1015,6 +1111,32 @@ function closeTab(i: number): void {
   renderTabs()
   persistTabs()
   void activateTab(activeTab)
+}
+
+/** ⌘⇧T: restore the most recently closed tab at the slot it left. */
+async function reopenClosedTab(): Promise<void> {
+  const last = closedTabs.pop()
+  if (!last) {
+    notify('No recently closed tab')
+    return
+  }
+  const tab = last.tab
+  // A blank tab's synthetic key would collide with its earlier self.
+  if (tab.kind === 'new') tab.relPath = blankTabRel()
+  captureScrollForShownContent()
+  const at = Math.max(0, Math.min(last.index, tabs.length))
+  tabs.splice(at, 0, tab)
+  activeTab = at
+  renderTabs()
+  persistTabs()
+  await loadTabContent(tab)
+}
+
+/** Ctrl+Tab / Ctrl+Shift+Tab and ⌘⇧[ / ⌘⇧]: walk the strip cyclically. */
+async function cycleTab(delta: number): Promise<void> {
+  if (tabs.length < 2) return
+  const next = (activeTab + delta + tabs.length) % tabs.length
+  await activateTab(next)
 }
 
 /** Closing the last tab. In a workspace with pages that means a blank tab —
@@ -1253,7 +1375,6 @@ function showNewTab(): void {
   welcomeEl.hidden = true
   emptyStateEl.hidden = true
   pageLoaderEl.hidden = true
-  ;(document.getElementById('crumb-bar') as HTMLElement).hidden = true
   breadcrumbsEl.innerHTML = ''
   markActiveInTree(null)
   updatePinButton()
@@ -1342,14 +1463,14 @@ async function openTextFile(pathOrRel: string, opts: { tab?: boolean } = {}): Pr
   textNameEl.title = res.absolutePath
   textIconEl.replaceChildren(iconEl(fileIconName(pathOrRel), 15))
   if (!textEditor) {
-    textEditor = createEditor(textMountEl, '', getTheme(themeId).kind, () => {
+    textEditor = createEditor(textMountEl, '', resolveTheme(themeId).kind, () => {
       fileDirty = true
       setFileStatus('Unsaved…', 'pending')
       if (fileSaveTimer !== null) window.clearTimeout(fileSaveTimer)
       fileSaveTimer = window.setTimeout(() => void flushTextFile(), 1200)
     })
   } else {
-    textEditor.setTheme(getTheme(themeId).kind)
+    textEditor.setTheme(resolveTheme(themeId).kind)
   }
   textEditor.setContent(res.content)
   fileDirty = false
@@ -1408,7 +1529,6 @@ async function openQuiz(relPath: string, opts: { tab?: boolean } = {}): Promise<
   crumb.className = 'crumb'
   crumb.append(iconEl('quiz', 14), document.createTextNode(page.title))
   breadcrumbsEl.appendChild(crumb)
-  ;(document.getElementById('crumb-bar') as HTMLElement).hidden = false
   currentQuizRel = page.relPath
   quizPane.render({
     relPath: page.relPath,
@@ -1785,6 +1905,7 @@ async function refreshTree(): Promise<void> {
   lastRoot = tree
   setupSidebar(tree, {
     currentRel: currentPage?.relPath ?? null,
+    notesOnly: true,
     onOpen: (rel, kind, newTab) => {
       // With the second pane active, navigation lands there (that is the page
       // the user is working on).
@@ -1826,12 +1947,85 @@ function refreshDailySurfaces(): void {
   }
 }
 
-/** Open `Daily/YYYY-MM-DD.md`, creating it if it does not exist yet. */
+/** Open `Daily/YYYY-MM-DD.md`, creating it if it does not exist yet.
+ *
+ * The tab is shown first — from cache or an empty sheet — and the file write
+ * plus the tree scan happen behind it. The old order (create → rescan the whole
+ * workspace → open) was the flash on every calendar click.
+ */
 async function openDaily(date: string): Promise<void> {
-  const page = await window.api.wsDaily(date)
-  if (!page) return
-  await refreshTree()
-  await openRel(page.relPath, 'page')
+  if (!workspaceRootCache) return
+  const rel = `Daily/${date}.md`
+  const existing = tabIndexFor(rel)
+  if (existing >= 0) {
+    await activateTab(existing)
+    return
+  }
+  const known = dailyNotes.some((n) => n.relPath === rel) || pageCache.has(rel)
+  if (!known && workspaceRootCache) {
+    // A placeholder keeps openRel synchronous-feeling; the real bytes replace it
+    // as soon as the main process has written the file.
+    cachePage({
+      relPath: rel,
+      absolutePath: `${workspaceRootCache}/${rel}`,
+      title: dailyTitle(date),
+      icon: '',
+      body: ''
+    })
+  }
+  void (async () => {
+    const created = await window.api.wsDaily(date)
+    if (!created) return
+    created.title = dailyTitle(date)
+    cachePage(created)
+    if (currentPage?.relPath === rel && !isPending(rel)) {
+      currentPage = { ...created, dirRel: dirOf(rel) }
+      pageTitleEl.value = created.title
+      refreshActiveTabLabel(created.title, created.icon)
+      if (created.body) loadIntoEditors(created.body)
+    }
+    // Kept off the click's critical path: the calendar only needs the tab.
+    void refreshTree()
+  })()
+  await openRel(rel, 'page')
+  refreshActiveTabLabel(dailyTitle(date), '')
+  renderBreadcrumbs()
+}
+
+async function openWeekly(key: string): Promise<void> {
+  if (!workspaceRootCache) return
+  const rel = `Weekly/${key}.md`
+  const existing = tabIndexFor(rel)
+  if (existing >= 0) {
+    await activateTab(existing)
+    return
+  }
+  const known = pageCache.has(rel)
+  if (!known && workspaceRootCache) {
+    cachePage({
+      relPath: rel,
+      absolutePath: `${workspaceRootCache}/${rel}`,
+      title: weeklyTitle(key),
+      icon: '',
+      body: ''
+    })
+  }
+  void (async () => {
+    const created = await window.api.wsWeekly(key)
+    if (!created) return
+    created.title = weeklyTitle(key)
+    cachePage(created)
+    if (currentPage?.relPath === rel && !isPending(rel)) {
+      currentPage = { ...created, dirRel: dirOf(rel) }
+      pageTitleEl.value = created.title
+      refreshActiveTabLabel(created.title, created.icon)
+      if (created.body) loadIntoEditors(created.body)
+    }
+    void refreshTree()
+  })()
+  await openRel(rel, 'page')
+  refreshActiveTabLabel(weeklyTitle(key), '')
+  renderBreadcrumbs()
 }
 
 // ---- workspace modes (Notes / Templates / Views / Graph / Inbox / Tasks / Media) ----
@@ -1972,7 +2166,6 @@ async function showModeForTab(tab: TabInfo): Promise<void> {
   welcomeEl.hidden = true
   emptyStateEl.hidden = true
   pageLoaderEl.hidden = true
-  ;(document.getElementById('crumb-bar') as HTMLElement).hidden = true
   breadcrumbsEl.innerHTML = ''
   markActiveInTree(null)
   updatePinButton()
@@ -2225,12 +2418,7 @@ function notify(text: string): void {
   }, 1800)
 }
 
-async function openWeekly(key: string): Promise<void> {
-  const page = await window.api.wsWeekly(key)
-  if (!page) return
-  await refreshTree()
-  await openRel(page.relPath, 'page')
-}
+// (openWeekly lives above with openDaily, next to the optimistic-open helpers.)
 
 // ---- theme / fonts ----
 let themeId = 'octarineDark'
@@ -2241,13 +2429,13 @@ function syncThemeSelect(): void {
 
 function setTheme(id: string): void {
   const theme = applyTheme(id)
-  // An id from a retired theme falls back to Octarine; remember the resolved id
-  // so the picker shows the theme actually on screen (and the next save keeps it).
-  themeId = theme.id
+  // The picker remembers the user's choice (including "system"), while the
+  // editors need the concrete light/dark palette that was resolved.
+  themeId = getTheme(id).id
   codeEditor.setTheme(theme.kind)
   textEditor?.setTheme(theme.kind)
   syncThemeSelect()
-  void window.api.setSettings('theme', theme.id)
+  void window.api.setSettings('theme', themeId)
 }
 function cycleTheme(): void {
   setTheme(nextTheme(themeId).id)
@@ -2570,6 +2758,28 @@ function renderBreadcrumbs(): void {
   }
   breadcrumbsEl.innerHTML = ''
   if (!currentPage || !lastRoot) return
+  const dailyKey = dailyKeyOf(currentPage.relPath)
+  if (dailyKey) {
+    const label = relativeDay(dailyKey) ?? formatDailyDate(dailyKey)
+    const btn = document.createElement('button')
+    btn.className = 'crumb-btn crumb-relative'
+    btn.textContent = label
+    btn.title = 'Open today’s daily note'
+    btn.addEventListener('click', () => void openDaily(todayKey()))
+    breadcrumbsEl.appendChild(btn)
+    return
+  }
+  const weeklyKey = weeklyKeyOf(currentPage.relPath)
+  if (weeklyKey) {
+    const week = weeklyTitle(weeklyKey)
+    const btn = document.createElement('button')
+    btn.className = 'crumb-btn crumb-relative'
+    btn.textContent = week
+    btn.title = 'Open this week’s note'
+    btn.addEventListener('click', () => void openWeekly(weekKeyForDate(todayKey())))
+    breadcrumbsEl.appendChild(btn)
+    return
+  }
   // Chain of directories from root to the current page's folder.
   const dirs: string[] = ['']
   if (currentPage.relPath.endsWith('/index.md')) {
@@ -2585,9 +2795,9 @@ function renderBreadcrumbs(): void {
     btn.className = 'crumb-btn'
     const isCurrentDir = dir === currentPage!.dirRel && currentPage!.relPath.endsWith('/index.md')
     if (node && !(dir === '' && node.kind === 'folder' && !node.title)) {
-      btn.textContent = (node.icon ?? '') + (node.icon ? '  ' : '') + (node.title ?? node.name)
+      btn.textContent = node.title ?? node.name
     } else if (dir === '') {
-      btn.textContent = '  ' + (document.getElementById('workspace-name') as HTMLElement).textContent
+      btn.textContent = ' / ' + (document.getElementById('workspace-name') as HTMLElement).textContent
     }
     if (isCurrentDir && !currentPage!.relPath.endsWith('/index.md')) btn.classList.add('dim')
     btn.addEventListener('click', () => {
@@ -2605,7 +2815,7 @@ function renderBreadcrumbs(): void {
   if (!currentPage.relPath.endsWith('/index.md')) {
     const btn = document.createElement('button')
     btn.className = 'crumb-btn current'
-    btn.textContent = (currentPage.icon ?? '') + (currentPage.icon ? '  ' : '') + currentPage.title
+    btn.textContent = currentPage.title
     btn.addEventListener('click', () => {
       const node = lastRoot ? findNodeByRel(lastRoot, currentPage!.relPath) : null
       if (node) showCrumbPop(btn, node)
@@ -2649,6 +2859,15 @@ window.api.onMenuAction((action) => {
       break
     case 'close-tab':
       closeTab(activeTab)
+      break
+    case 'reopen-tab':
+      void reopenClosedTab()
+      break
+    case 'next-tab':
+      void cycleTab(1)
+      break
+    case 'prev-tab':
+      void cycleTab(-1)
       break
     case 'save':
       void persistNow()
@@ -2753,6 +2972,9 @@ async function openExistingWorkspace(): Promise<void> {
 // Ensure the current page can have children: loose x.md becomes x/index.md.
 async function ensureFolderPage(): Promise<string> {
   if (!currentPage) return ''
+  // A dated note is a leaf by design (its filename is the calendar key). A new
+  // page created while reading it belongs at the root, never inside `Daily/`.
+  if (dailyKeyOf(currentPage.relPath) || weeklyKeyOf(currentPage.relPath)) return ''
   if (currentPage.relPath.endsWith('/index.md')) return currentPage.dirRel
   const newRel = await window.api.wsConvertLoose(currentPage.relPath)
   currentPage.relPath = newRel
@@ -3185,6 +3407,35 @@ function closePageViewMenu(): HTMLElement | null {
   menu.hidden = true
   document.getElementById('page-view-btn')?.classList.remove('open')
   return menu
+}
+
+function closePagePillMenus(): HTMLElement[] {
+  const closed: HTMLElement[] = []
+  for (const id of ['page-type-menu', 'page-more-menu']) {
+    const menu = document.getElementById(id)
+    if (menu && !menu.hidden) {
+      menu.hidden = true
+      closed.push(menu)
+    }
+  }
+  document.getElementById('page-type-btn')?.classList.remove('open')
+  document.getElementById('page-more-btn')?.classList.remove('open')
+  closePageViewMenu()
+  return closed
+}
+
+function togglePagePillMenu(id: 'page-type-menu' | 'page-more-menu'): void {
+  const menu = document.getElementById(id)
+  const anchor = document.getElementById(id === 'page-type-menu' ? 'page-type-btn' : 'page-more-btn')
+  if (!menu || !anchor) return
+  const wasHidden = menu.hidden
+  closePagePillMenus()
+  closeExportMenu()
+  if (wasHidden) {
+    anchorFloat(menu, anchor)
+    menu.hidden = false
+    anchor.classList.add('open')
+  }
 }
 
 /** Render the current page through the print pipeline into the right pane. */
@@ -4203,27 +4454,16 @@ searchModalEl.addEventListener('mousedown', (e) => {
   if (e.target === searchModalEl) closeSearch(true)
 })
 
-window.addEventListener('keydown', (e) => {
-  if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'f') return
-  e.preventDefault()
-  if (e.shiftKey) {
-    // ⌘⇧F — search the whole workspace
-    if (!searchModalEl.hidden) closeSearch(true)
-    else openSearch()
-    return
-  }
-  // ⌘F — find in the current page
-  if (findBarEl.hidden) openFind()
-  else closeFind(true)
-})
+// ⌘F / ⌘⇧F are dispatched by the central keybind registry (see keybinds.ts).
 
 // ---------------------------------------------------------------------------
 // Top command bar: theme picker, panel toggles. Plus the sidebar's
 // Open Editors and Outline sections.
 // ---------------------------------------------------------------------------
-const themeSelectEl = document.getElementById('theme-select') as HTMLSelectElement
+const themeSelectEl = document.getElementById('theme-select') as HTMLSelectElement | null
 
 function buildThemeSelect(): void {
+  if (!themeSelectEl) return
   themeSelectEl.innerHTML = ''
   for (const t of THEMES) {
     const opt = document.createElement('option')
@@ -4233,8 +4473,8 @@ function buildThemeSelect(): void {
   }
   syncThemeSelect()
 }
-themeSelectEl.addEventListener('change', () => {
-  setTheme(themeSelectEl.value)
+themeSelectEl?.addEventListener('change', () => {
+  if (themeSelectEl) setTheme(themeSelectEl.value)
 })
 
 function setSidebarOpen(open: boolean, persist = true): void {
@@ -4254,16 +4494,7 @@ window.addEventListener('keydown', (e) => {
 
 document.getElementById('nav-back')!.addEventListener('click', () => goBack())
 document.getElementById('nav-forward')!.addEventListener('click', () => goForward())
-window.addEventListener('keydown', (e) => {
-  if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return
-  if (e.key === '[') {
-    e.preventDefault()
-    goBack()
-  } else if (e.key === ']') {
-    e.preventDefault()
-    goForward()
-  }
-})
+// ⌘[ / ⌘] are dispatched by the keybind registry, so they can be rebound.
 
 document.getElementById('toggle-sidebar-btn')!.addEventListener('click', () => {
   const sb = document.getElementById('sidebar') as HTMLElement
@@ -4286,16 +4517,7 @@ document.getElementById('crumb-focus-btn')?.addEventListener('click', () => {
   if (!focusMode) toggleFocusMode()
 })
 
-// ⌘K and ⌘P both open the workspace palette, the two shortcuts people already
-// reach for. The tree's own filter stays available in the Files view.
-window.addEventListener('keydown', (e) => {
-  if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return
-  const key = e.key.toLowerCase()
-  if (key === 'k' || key === 'p') {
-    e.preventDefault()
-    openSearch()
-  }
-})
+// ⌘K opens the workspace palette (the registry owns the shortcut).
 
 let focusMode = false
 let focusRestore: { sidebar: boolean; agent: boolean } | null = null
@@ -4336,7 +4558,8 @@ window.addEventListener('keydown', (e) => {
 
 // ---- Open Editors (mirrors the tab strip) ----
 function renderOpenEditors(): void {
-  const host = document.getElementById('open-editors') as HTMLElement
+  const host = document.getElementById('open-editors')
+  if (!host) return
   host.innerHTML = ''
   if (tabs.length === 0) {
     const hint = document.createElement('div')
@@ -4445,6 +4668,7 @@ async function initWorkspace(): Promise<void> {
   const res = await window.api.wsGet()
   if (seq !== bootSeq) return // superseded by a newer boot
   const base = res.workspace
+  workspaceRootCache = base
   if (base !== cacheWorkspacePath) {
     // Remember where this workspace was, so coming back to it restores its own
     // tabs. Without this, a switch restored the other workspace's tab list,
@@ -4495,7 +4719,8 @@ async function initWorkspace(): Promise<void> {
   // The switcher's own icon carries the lock; the name doesn't need to repeat
   // it as a sticker.
   workspaceNameEl.textContent = name
-  ;(document.getElementById('sidebar-ws-name') as HTMLElement).textContent = name
+  const sidebarWsName = document.getElementById('sidebar-ws-name')
+  if (sidebarWsName) sidebarWsName.textContent = name
   wsIconEl.innerHTML = iconSvg(isPrivate ? 'lock' : 'folder', 16)
   lockBtn.hidden = !isPrivate
   ;(document.getElementById('workspace-switcher') as HTMLButtonElement).title = display
@@ -4519,6 +4744,7 @@ async function initWorkspace(): Promise<void> {
     lastRoot = tree
     setupSidebar(tree, {
       currentRel: currentPage?.relPath ?? null,
+      notesOnly: true,
       onOpen: (rel, kind, newTab) => {
         void openRel(rel, kind, newTab === true)
       }
@@ -4590,6 +4816,10 @@ async function init(): Promise<void> {
   }
   const savedTheme = res.theme ?? 'octarineDark'
   setTheme(savedTheme)
+  // "Follow macOS System" must follow live, not only at launch.
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (themeId === 'system') setTheme('system')
+  })
   applyPreviewFont(res.previewFont ?? 'default')
   applyRenderSize(setting('renderFontSize', 'm'))
   setCountMode(setting<CountMode>('wordCountMode', 'words') === 'asian' ? 'asian' : 'words')
@@ -4669,7 +4899,7 @@ async function init(): Promise<void> {
       await initWorkspace()
     })()
   })
-  document.getElementById('open-in-finder')!.addEventListener('click', () => void window.api.wsOpenInFinder())
+  document.getElementById('open-in-finder')?.addEventListener('click', () => void window.api.wsOpenInFinder())
   const openExternal = (): void => {
     void (async () => {
       if (!currentFile && currentPdfPath) {
@@ -4761,7 +4991,16 @@ async function init(): Promise<void> {
     void createNewPage('__root__')
   })
   document.getElementById('settings-btn')!.addEventListener('click', () => void settingsApi.show())
-  document.getElementById('new-page-btn')!.addEventListener('click', () => void createNewPage(null))
+  document.getElementById('page-type-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation()
+    togglePagePillMenu('page-type-menu')
+  })
+  document.getElementById('page-more-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation()
+    togglePagePillMenu('page-more-menu')
+  })
+  registerFloatCloser(() => closePagePillMenus())
+  document.getElementById('new-page-btn')?.addEventListener('click', () => void createNewPage(null))
   document.getElementById('empty-new-page')!.addEventListener('click', () => void createNewPage(null))
   document.getElementById('toggle-agent-btn')!.addEventListener('click', toggleAgentPanel)
   document.getElementById('agent-close')!.addEventListener('click', toggleAgentPanel)
@@ -4810,29 +5049,11 @@ async function init(): Promise<void> {
     void window.api.setSettings('showPageIcon', showPageIcon)
     applyPageDisplay()
   })
-  document.getElementById('action-add-icon')!.addEventListener('click', () => {
-    pageIconEl.click()
-  })
-  document.getElementById('action-copy-path')!.addEventListener('click', () => {
-    if (!currentPage) return
-    const text = (currentPage.absolutePath || currentPage.relPath)
-    void navigator.clipboard.writeText(text).catch(() => {
-      const ta = document.createElement('textarea')
-      ta.value = text
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand('copy')
-      ta.remove()
-    })
-    setSaveStatus('Path copied', 'ok')
-    window.setTimeout(() => setSaveStatus(''), 1500)
-  })
-
-  const search = document.getElementById('page-search') as HTMLInputElement
+  const search = document.getElementById('page-search') as HTMLInputElement | null
   // Filtering the tree re-reads the workspace, so debounce so typing a word
   // costs one scan instead of one per keystroke.
   let searchDebounce: number | null = null
-  search.addEventListener('input', () => {
+  search?.addEventListener('input', () => {
     if (searchDebounce !== null) window.clearTimeout(searchDebounce)
     searchDebounce = window.setTimeout(() => {
       searchDebounce = null
@@ -4884,11 +5105,41 @@ async function init(): Promise<void> {
     onCountModeChange: (mode) => setCountMode(mode)
   })
   document.getElementById('agent-off-settings')?.addEventListener('click', () => settingsApi.show())
-  window.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === ',') {
-      e.preventDefault()
-      settingsApi.show()
-    }
+  // Every navigation/tab/sidebar/focus/daily shortcut goes through one registry
+  // so Settings can record and reset them. Menu accelerators remain as a second
+  // path (they fire without a renderer key event on macOS).
+  keybinds.attach({
+    search: () => openSearch(),
+    find: () => (findBarEl.hidden ? openFind() : closeFind(true)),
+    'find-workspace': () => (searchModalEl.hidden ? openSearch() : closeSearch(true)),
+    'nav-back': goBack,
+    'nav-forward': goForward,
+    'new-tab': () => void newTab(),
+    'close-tab': () => closeTab(activeTab),
+    'reopen-tab': () => void reopenClosedTab(),
+    'next-tab': () => void cycleTab(1),
+    'prev-tab': () => void cycleTab(-1),
+    'next-tab-bracket': () => void cycleTab(1),
+    'prev-tab-bracket': () => void cycleTab(-1),
+    'toggle-sidebar': () => {
+      const sb = document.getElementById('sidebar')
+      setSidebarOpen(sb?.hasAttribute('hidden') ?? false, true)
+    },
+    'focus-mode': () => toggleFocusMode(),
+    'daily-today': () => void openDaily(todayKey()),
+    'daily-yesterday': () => void openDaily(shiftDateKey(todayKey(), -1)),
+    'daily-tomorrow': () => void openDaily(shiftDateKey(todayKey(), 1)),
+    weekly: () => void openWeekly(weekKeyForDate(todayKey())),
+    'new-page': () => void createNewPage(null),
+    save: () => {
+      void persistNow()
+      void flushTextFile()
+    },
+    'toggle-source': () => toggleSource(),
+    'export-pdf': () => void exportPageToPdf(),
+    'toggle-agent': () => toggleAgentPanel(),
+    settings: () => settingsApi.show(),
+    'cycle-theme': () => cycleTheme()
   })
   restartAgentPanel = () => agentApi.restart()
   // First run: ask for one endpoint + key + model, then wire the agent to it.

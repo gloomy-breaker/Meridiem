@@ -93,6 +93,9 @@ export interface MarkdownEditor {
   setContent: (text: string) => void
   setTheme: (kind: 'light' | 'dark') => void
   scrollToLine: (line0: number) => void
+  /** Whole editor state, so a tab's caret and undo history survive a switch. */
+  getState: () => EditorState
+  setState: (state: EditorState) => void
 }
 
 export function createEditor(
@@ -173,6 +176,8 @@ export function createEditor(
         effects: EditorView.scrollIntoView(pos, { y: 'center', yMargin: 40 })
       })
       view.focus()
-    }
+    },
+    getState: () => view.state,
+    setState: (state: EditorState) => view.setState(state)
   }
 }

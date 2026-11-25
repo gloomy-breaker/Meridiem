@@ -286,6 +286,18 @@ const pendingChanges = new Set<string>()
 // agent / external editor change and must refresh the UI.
 const selfWrites = new Map<string, { body: string; at: number }>()
 
+/** Record bytes this app just wrote, so the watcher treats their echo as ours. */
+function rememberSelfWrite(root: string, rel: string): void {
+  try {
+    selfWrites.set(rel.replace(/\\/g, '/'), {
+      body: readFileSync(join(root, rel), 'utf-8'),
+      at: Date.now()
+    })
+  } catch {
+    /* binary or missing: the watcher will simply treat it as external */
+  }
+}
+
 let watchedRoot: string | null = null
 
 /** Start (or move) the watcher for `root` if it isn't already watching it. */
@@ -937,8 +949,8 @@ function registerWorkspaceHandlers(): void {
       /* new page */
     }
     await savePage(abs, payload.title, payload.icon, payload.body)
-    // Removing a link exiles the page to bin/; adding one adopts it. Skipped in
-    // encrypted workspaces (everything there is a ciphertext blob).
+    // Adding a link adopts the target under this page. Removing one never moves
+    // a file (there is no workspace Bin). Skipped in encrypted workspaces.
     if (!currentVault()) {
       try {
         const moves = await organizeAfterSave(root, payload.relPath, beforeBody, payload.body)
@@ -973,7 +985,9 @@ function registerWorkspaceHandlers(): void {
   ipcMain.handle('ws:create', async (_e, payload: { parentRel: string | null; title: string }) => {
     const root = getWorkspace()
     if (!root) return null
-    return createPage(root, payload.parentRel, payload.title)
+    const page = await createPage(root, payload.parentRel, payload.title)
+    if (page) rememberSelfWrite(root, page.relPath)
+    return page
   })
   // Daily notes are loose `Daily/YYYY-MM-DD.md` files rather than folder pages:
   // a day is a leaf, and a year of folders would drown the tree. Kept here
@@ -994,12 +1008,15 @@ function registerWorkspaceHandlers(): void {
       /* not created yet */
     }
     await savePage(abs, clean, '', '')
+    rememberSelfWrite(root, relPath)
     return { relPath, absolutePath: abs, title: clean, icon: '', body: '' }
   })
   ipcMain.handle('ws:convert-loose', async (_e, relPath: string) => {
     const root = getWorkspace()
     if (!root) return relPath
-    return convertLoosePage(root, relPath)
+    const next = await convertLoosePage(root, relPath)
+    if (next && next !== relPath) rememberSelfWrite(root, next)
+    return next
   })
   ipcMain.handle('ws:weekly', async (_e, key: unknown) => {
     const root = getWorkspace()
@@ -1016,6 +1033,7 @@ function registerWorkspaceHandlers(): void {
       /* not created yet */
     }
     await savePage(abs, clean, '', '')
+    rememberSelfWrite(root, relPath)
     return { relPath, absolutePath: abs, title: clean, icon: '', body: '' }
   })
   // A template is a file you copy, not a file you edit. Markdown templates
@@ -1044,10 +1062,12 @@ function registerWorkspaceHandlers(): void {
       const abs = join(root, relPath)
       await fsMkdir(dirname(abs), { recursive: true })
       await fsp(abs, serializePageFile(title, parsed.icon, parsed.body), 'utf-8')
+      rememberSelfWrite(root, relPath)
       return { relPath, absolutePath: abs, title, icon: parsed.icon, body: parsed.body }
     }
     const page = await createPage(root, null, title)
     await savePage(page.absolutePath, title, parsed.icon, parsed.body)
+    rememberSelfWrite(root, page.relPath)
     return { ...page, title, icon: parsed.icon, body: parsed.body }
   })
   // Workspace-mode projections (Notes views, graph, tasks, media, Inbox).
@@ -1087,7 +1107,16 @@ function registerWorkspaceHandlers(): void {
   ipcMain.handle('ws:delete', async (_e, relPath: string) => {
     const root = getWorkspace()
     if (!root) return false
-    await deletePageOrFolder(join(root, relPath))
+    // Deleting a page means deleting its folder, and the file goes to the
+    // macOS Trash — not to a workspace `Bin/` folder and not to oblivion.
+    const abs = join(root, relPath)
+    const target = /[/\\]index\.md$/i.test(abs) ? dirname(abs) : abs
+    try {
+      await shell.trashItem(target)
+    } catch {
+      // No Trash available (some network volumes): fall back to a real delete.
+      await deletePageOrFolder(target)
+    }
     return true
   })
   ipcMain.handle('ws:resolve-link', async (_e, linkText: string, fromDir?: string) => {
@@ -1545,20 +1574,51 @@ function registerAgentHandlers(): void {
   })
 }
 
-app.on('before-quit', () => {
-  // The external harness is a child process. Quitting the window is not a
-  // reason to leave it behind; kill synchronously and dispose the pi handle.
-  terminateAllAcpChildren()
-  void stopAgent()
-})
-
+/**
+ * Quit is the one path that must leave nothing behind. A plain `app.quit()`
+ * let the recursive fs watcher, the ACP child process and an in-flight pi
+ * stream outlive the window, so Activity Monitor kept a Meridiem process (and
+ * sometimes a whole CLI) alive after ⌘Q. Every one of them is torn down here,
+ * then the process exits directly.
+ */
+let quitting = false
 app.on('before-quit', (event) => {
-  if (!currentVault()) return
+  if (quitting) return
+  quitting = true
   event.preventDefault()
-  void closeVaultSession().finally(() => {
-    // Second pass through before-quit: no vault left, so this falls through.
-    app.quit()
-  })
+  void (async () => {
+    try {
+      stopWatching()
+    } catch {
+      /* watcher already closed */
+    }
+    try {
+      terminateAllAcpChildren()
+    } catch {
+      /* no child processes */
+    }
+    try {
+      await stopAgent()
+    } catch {
+      /* handle already disposed */
+    }
+    try {
+      destroyPrintHost()
+    } catch {
+      /* no print host */
+    }
+    try {
+      if (currentVault()) await closeVaultSession()
+    } catch {
+      /* vault already closed */
+    }
+    // Destroy, rather than close, so no window's close handler can start
+    // another async teardown on the way out.
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.destroy()
+    }
+    app.exit(0)
+  })()
 })
 
 app.whenReady().then(() => {

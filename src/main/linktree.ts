@@ -3,13 +3,13 @@
 //
 // In this model the sidebar mirrors the LINKS inside pages, not the folders on
 // disk: a page's children are the pages it links to with [[Page Title]] (in the
-// order they appear). The physical layout is kept in step on save — when a link
-// is removed the page moves to <root>/bin/, and when a page is linked from
-// somewhere else it moves under that page's folder — so what you see in the
-// tree is also what you see in Finder.
+// order they appear). The physical layout is kept in step on save — when a page
+// is linked from somewhere else it moves under that page's folder — so what you
+// see in the tree is also what you see in Finder.
 //
-// Everything that is not reachable through links lands under a "Bin" node, so
-// nothing can disappear from the tree.
+// Nothing is ever moved into a `bin/` folder. A page nothing links to is shown
+// at the root instead, and deleting is the user's explicit action (to the macOS
+// Trash). Legacy `bin/` folders are simply hidden.
 //
 // This module is deliberately free of Electron imports so the logic can be
 // exercised directly with node (see scripts/linktree-check.mjs).
@@ -249,12 +249,13 @@ function isPage(x: ScannedPage | ScannedFile): x is ScannedPage {
  * Build the sidebar tree from links.
  * Roots are the pages sitting at the top level of the workspace; their children
  * are the pages/files they link to, recursively (each node appears once, first
- * link wins, so cycles cannot loop). Anything unreachable — including
- * everything inside `bin/` — is collected under a "Bin" node.
+ * link wins, so cycles cannot loop). Pages nothing links to are shown as roots
+ * too: Meridiem has no Bin folder, so a page must never become unreachable.
  */
 export async function buildLinkTree(root: string): Promise<TreeNode> {
   const scan = await scanWorkspace(root)
 
+  // Legacy `bin/` folders from older builds are hidden, never surfaced.
   const inBin = (rel: string): boolean => rel === BIN_DIR || rel.startsWith(`${BIN_DIR}/`)
 
   // A page is a root when it lives at the top level: a loose `notes.md` in the
@@ -303,19 +304,22 @@ export async function buildLinkTree(root: string): Promise<TreeNode> {
     roots.push(node)
   }
 
-  // Everything unreachable: bin contents, orphan pages, unreferenced files.
-  const binEntries: TreeNode[] = []
+  // Everything unreachable becomes a root instead of a Bin entry. Pages that
+  // nothing links to still belong to the user and must stay openable.
+  const orphanPages: TreeNode[] = []
   for (const p of scan.pages) {
     if (seen.has(p.relPath)) continue
+    if (inBin(p.relPath)) continue
     seen.add(p.relPath)
     const node = pageNode(p)
     node.children = buildChildren(p, seen)
-    binEntries.push(node)
+    orphanPages.push(node)
   }
   // Unlinked attachments are deliberately NOT listed: this tree mirrors links,
   // so an image or PDF shows up when a page links it. They stay reachable via
   // the workspace search (⌘⇧F), and the agent can find them by name.
-  binEntries.sort((a, b) => (a.title ?? a.name).localeCompare(b.title ?? b.name))
+  orphanPages.sort((a, b) => (a.title ?? a.name).localeCompare(b.title ?? b.name))
+  roots.push(...orphanPages)
 
   const tree: TreeNode = {
     name: root.split('/').pop() || 'Workspace',
@@ -323,17 +327,6 @@ export async function buildLinkTree(root: string): Promise<TreeNode> {
     relPath: '',
     kind: 'folder',
     children: roots
-  }
-  if (binEntries.length > 0) {
-    tree.children!.push({
-      name: 'Bin',
-      path: join(root, BIN_DIR),
-      relPath: BIN_DIR,
-      kind: 'folder',
-      title: 'Bin',
-      icon: '🗑',
-      children: binEntries
-    })
   }
   return tree
 }
@@ -380,13 +373,12 @@ function isInside(child: string, parent: string): boolean {
 /**
  * Reconcile the disk layout with the links on the page that was just saved.
  *
- * - a page this page used to link and no longer does, and that nothing else
- *   links to, moves to `<root>/bin/…`
  * - a page this page newly links moves into this page's folder, so the tree and
  *   Finder agree
  *
  * Only page folders are moved, and never a page that another page also links to
- * (that would be ambiguous), and never into itself.
+ * (that would be ambiguous), and never into itself. Removing a link never moves
+ * a file: the page stays put and is listed as an unlinked root.
  */
 export async function organizeAfterSave(
   root: string,
@@ -410,42 +402,12 @@ export async function organizeAfterSave(
   const before = new Set(extractPageLinks(beforeBody))
   const after = new Set(extractPageLinks(afterBody))
 
-  // 1. Links that went away → unlink → move to bin (if nothing else links it).
-  for (const link of before) {
-    if (after.has(link)) continue
-    const target = resolveLink(link, scan.byName, scan.files)
-    if (!target || !isPage(target)) continue
-    if (target.relPath === savedRelPath) continue
-    // it must have been living under this page to be moved out of it
-    if (!isInside(target.dirRel, savedDir) || target.dirRel === savedDir) continue
-    if (linkersOf(target).length > 0) continue // still referenced elsewhere
-    if (!target.isIndex) {
-      // loose page: move the file itself into bin
-      const binAbs = join(root, BIN_DIR)
-      await fs.mkdir(binAbs, { recursive: true })
-      const dest = await uniqueDir(binAbs, target.name)
-      await fs.mkdir(dest, { recursive: true })
-      await fs.rename(target.abs, join(dest, basename(target.relPath)))
-      moves.push({
-        from: target.relPath,
-        to: `${BIN_DIR}/${basename(dest)}/${basename(target.relPath)}`,
-        reason: 'unlinked'
-      })
-      continue
-    }
-    const binAbs = join(root, BIN_DIR)
-    await fs.mkdir(binAbs, { recursive: true })
-    const fromAbs = join(root, target.dirRel)
-    const dest = await uniqueDir(binAbs, basename(fromAbs))
-    await fs.rename(fromAbs, dest)
-    moves.push({
-      from: target.relPath,
-      to: `${BIN_DIR}/${basename(dest)}/${INDEX}`,
-      fromDir: target.dirRel,
-      toDir: `${BIN_DIR}/${basename(dest)}`,
-      reason: 'unlinked'
-    })
-  }
+  // 1. Links that went away. Meridiem no longer exiles a page into a `bin/`
+  // folder: removing a link is a statement about the tree, not about the file.
+  // The page stays exactly where it is and simply becomes an unlinked root
+  // (buildLinkTree lists it), so an accidental deletion of `[[…]]` can never
+  // move a note out from under the user.
+  void before
 
   // 2. New links → bring the page in under this one.
   for (const link of after) {
