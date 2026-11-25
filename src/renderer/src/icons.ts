@@ -44,6 +44,12 @@ export type IconName =
   | 'help'
   | 'panel'
   | 'flag'
+  | 'calendar'
+  | 'network'
+  | 'tray'
+  | 'check'
+  | 'template'
+  | 'home'
 
 /** Glyph interiors. Stroked unless the name appears in FILLED. */
 const GLYPHS: Record<IconName, string> = {
@@ -116,7 +122,22 @@ const GLYPHS: Record<IconName, string> = {
   // A pennant on a mast: the one mark a candidate already knows means "come
   // back to this one".
   flag:
-    '<path d="M6.2 21V3.6"/><path d="M6.2 4.4c3.5-1.9 6.4-1.9 9.9 0 1 .5 2.1.5 3.1-.1v9c-1 .6-2.1.6-3.1.1-3.5-1.9-6.4-1.9-9.9 0z"/>'
+    '<path d="M6.2 21V3.6"/><path d="M6.2 4.4c3.5-1.9 6.4-1.9 9.9 0 1 .5 2.1.5 3.1-.1v9c-1 .6-2.1.6-3.1.1-3.5-1.9-6.4-1.9-9.9 0z"/>',
+  calendar:
+    '<rect x="3.6" y="5.2" width="16.8" height="15" rx="2.2"/><path d="M3.6 9.6h16.8"/><path d="M8 3.6v3"/><path d="M16 3.6v3"/>',
+  network:
+    '<circle cx="6.2" cy="7.1" r="2.1"/><circle cx="17.6" cy="6.4" r="2.1"/><circle cx="12.3" cy="17.4" r="2.1"/>' +
+    '<path d="M8.2 7.9l7.4-.9"/><path d="M7.4 8.9l3.9 6.6"/><path d="M16.7 8.2l-3.3 7.2"/>',
+  tray:
+    '<path d="M4.1 12.6 6.3 5.8a1.8 1.8 0 0 1 1.7-1.2h8a1.8 1.8 0 0 1 1.7 1.2l2.2 6.8v4.7a1.8 1.8 0 0 1-1.8 1.8H5.9a1.8 1.8 0 0 1-1.8-1.8z"/>' +
+    '<path d="M4.1 12.6h4.2l1 2h5.4l1-2h4.2"/>',
+  check:
+    '<rect x="3.9" y="3.9" width="16.2" height="16.2" rx="3.2"/><path d="M7.8 12.3l2.5 2.5 5.3-5.6"/>',
+  template:
+    '<path d="M13.7 3.6H7.2a1.9 1.9 0 0 0-1.9 1.9v13a1.9 1.9 0 0 0 1.9 1.9h7.1"/>' +
+    '<path d="M13.7 3.6v4.1h4.2"/><path d="M17.2 14.4v5.2"/><path d="M14.6 17h5.2"/>',
+  home:
+    '<path d="M3.9 10.4 12 3.7l8.1 6.7v9.2a1.4 1.4 0 0 1-1.4 1.4H5.3a1.4 1.4 0 0 1-1.4-1.4z"/><path d="M9.4 21v-6.4h5.2V21"/>'
 }
 
 /** Drawn solid instead of stroked. */

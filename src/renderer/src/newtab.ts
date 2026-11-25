@@ -32,8 +32,12 @@ export interface NewTabDeps {
   open: (item: NewTabItem) => void
   /** Create a page and open it in the active tab. */
   createPage: () => void
+  /** Open (or create) today's Daily note. */
+  openDaily: () => void
   /** Native file picker → the matching built-in viewer. */
   openFile: () => void
+  /** Switch to another workspace folder. */
+  openWorkspace: () => void
   /** The workspace-wide content search modal. */
   searchWorkspace: () => void
 }
@@ -55,7 +59,9 @@ const ICON_FOR_KIND: Record<string, IconName> = {
   image: 'image',
   file: 'doc',
   binary: 'doc',
-  quiz: 'quiz'
+  quiz: 'quiz',
+  view: 'table',
+  graph: 'network'
 }
 
 const MAX_ROWS = 40
@@ -84,7 +90,10 @@ export function createNewTabPane(deps: NewTabDeps): NewTabPane {
    *  skipped entirely. */
   let drawnSignature = ''
 
-  const iconFor = (item: NewTabItem): IconName => ICON_FOR_KIND[item.kind] ?? 'doc'
+  const iconFor = (item: NewTabItem): IconName => {
+    if (item.kind === 'page' && (/^Daily\//.test(item.relPath) || /^Weekly\//.test(item.relPath))) return 'calendar'
+    return ICON_FOR_KIND[item.kind] ?? 'doc'
+  }
 
   /** Pages are shown without the /index.md they live in. */
   const pathFor = (item: NewTabItem): string =>
@@ -107,7 +116,7 @@ export function createNewTabPane(deps: NewTabDeps): NewTabPane {
     ).slice(0, MAX_ROWS)
     if (activeIndex >= rows.length) activeIndex = rows.length - 1
 
-    labelEl.textContent = searching ? 'Pages' : 'Recent'
+    labelEl.textContent = searching ? 'Pages' : 'Recently viewed'
     countEl.textContent = rows.length > 1 ? String(rows.length) : ''
     emptyEl.hidden = rows.length > 0
     emptyEl.textContent = searching
@@ -257,6 +266,8 @@ export function createNewTabPane(deps: NewTabDeps): NewTabPane {
   })
 
   document.getElementById('newtab-new-page')?.addEventListener('click', () => deps.createPage())
+  document.getElementById('newtab-daily')?.addEventListener('click', () => deps.openDaily())
+  document.getElementById('newtab-open-folder')?.addEventListener('click', () => deps.openWorkspace())
   document.getElementById('newtab-open-file')?.addEventListener('click', () => deps.openFile())
   document.getElementById('newtab-search-ws')?.addEventListener('click', () => deps.searchWorkspace())
 

@@ -17,12 +17,12 @@ import { parseQz } from './qz'
 import { countText, formatCount, type CountMode } from './word-count'
 import {
   collectDailyNotes,
-  renderDailyList,
   setupCalendar,
   todayKey,
   type CalendarHandle,
   type DailyNote
 } from './calendar'
+import { renderWorkspaceMode, type WorkspaceModeId, type WorkspaceViewId } from './workspace-modes'
 
 // Fonts live in ./fonts.ts (shared with the settings modal).
 
@@ -81,6 +81,8 @@ const statCharsEl = document.getElementById('stat-chars') as HTMLElement
 const statLinesEl = document.getElementById('stat-lines') as HTMLElement
 const statReadEl = document.getElementById('stat-read') as HTMLElement
 const pageStatusEl = document.getElementById('page-status') as HTMLElement
+const modePaneEl = document.getElementById('mode-pane') as HTMLElement
+const modeBodyEl = document.getElementById('mode-body') as HTMLElement
 
 // ---- state ----
 let currentPage: { relPath: string; absolutePath: string; title: string; icon: string; body: string; dirRel: string } | null = null
@@ -601,6 +603,7 @@ async function openPageByRel(relPath: string, opts: { tab?: boolean } = {}): Pro
   paintPageIcon(page.icon)
   pageTitleEl.value = page.title
   markActiveInTree(page.relPath)
+  updatePinButton()
   if (opts.tab !== false) upsertActiveTab({ relPath: page.relPath, kind: 'page', title: page.title, icon: page.icon })
   ;(document.getElementById('crumb-bar') as HTMLElement).hidden = false
   // Whatever was floating belonged to the page we just left.
@@ -629,7 +632,7 @@ interface TabInfo {
   /** 'new' is a blank tab: it holds no file, only the landing page. Its
    *  relPath is a synthetic key (`__newtab__:…`) so the strip can still key
    *  tabs by path. */
-  kind: 'page' | 'pdf' | 'image' | 'file' | 'binary' | 'quiz' | 'new'
+  kind: 'page' | 'pdf' | 'image' | 'file' | 'binary' | 'quiz' | 'new' | 'view' | 'graph'
   title: string
   icon?: string
   /** Remembered scroll position of this tab's content. */
@@ -721,12 +724,20 @@ const tabBarEl = document.getElementById('tab-bar') as HTMLElement
 
 /** The tab strip's icon: the page's own emoji if the user set one, else line art. */
 function tabIconName(tab: TabInfo): IconName {
-  if (tab.kind === 'new') return 'sparkle'
+  if (tab.kind === 'new') return 'home'
+  if (tab.kind === 'graph') return 'network'
+  if (tab.kind === 'view') {
+    if (tab.relPath.endsWith(':inbox')) return 'tray'
+    if (tab.relPath.endsWith(':tasks')) return 'check'
+    if (tab.relPath.endsWith(':media')) return 'image'
+    return 'table'
+  }
   if (tab.kind === 'pdf') return 'doc'
   if (tab.kind === 'image') return 'image'
   if (tab.kind === 'file') return fileIconName(tab.relPath)
   if (tab.kind === 'binary') return 'doc'
   if (tab.kind === 'quiz') return 'quiz'
+  if (/^Daily\//.test(tab.relPath) || /^Weekly\//.test(tab.relPath)) return 'calendar'
   return 'doc'
 }
 
@@ -790,6 +801,9 @@ function makeTabEl(): HTMLElement {
     const i = tabIndexForEl(el)
     if (i < 0) return
     const tab = tabs[i]
+    // Workspace-view tabs have no file behind them; a file menu would offer
+    // reveal/delete on a synthetic path.
+    if (tab.kind === 'view' || tab.kind === 'graph') return
     void window.api.showItemMenu({ relPath: tab.relPath, kind: tab.kind, name: tab.title, isTab: true })
   })
   el.addEventListener('dragstart', (e) => {
@@ -888,6 +902,10 @@ function captureActiveScroll(): number | undefined {
     return el?.scrollTop ?? 0
   }
   if (!newTabPane.el.hidden) return newTabPane.scrollEl.scrollTop
+  if (!modePaneEl.hidden) {
+    const el = modePaneEl.querySelector('.mode-scroll') as HTMLElement | null
+    return el?.scrollTop ?? 0
+  }
   return undefined
 }
 
@@ -905,6 +923,9 @@ function restoreActiveScroll(top: number | undefined): void {
     if (el) el.scrollTop = top
   } else if (!newTabPane.el.hidden) {
     newTabPane.scrollEl.scrollTop = top
+  } else if (!modePaneEl.hidden) {
+    const el = modePaneEl.querySelector('.mode-scroll') as HTMLElement | null
+    if (el) el.scrollTop = top
   }
 }
 
@@ -931,6 +952,7 @@ function shownRelPath(): string | null {
   if (!imagePaneEl.hidden) return currentImagePath
   if (!textPaneEl.hidden) return currentFile?.relPath ?? null
   if (!newTabPane.el.hidden) return tabs[activeTab]?.relPath ?? null
+  if (!modePaneEl.hidden) return tabs[activeTab]?.relPath ?? null
   return null
 }
 
@@ -959,8 +981,10 @@ async function loadTabContent(tab: TabInfo): Promise<void> {
   if (tab.kind !== 'new') recordNav({ rel: tab.relPath, kind: tab.kind, title: tab.title })
   // Menus and pickers from the tab we're leaving don't belong over this one.
   dismissFloats()
+  if (tab.kind !== 'view' && tab.kind !== 'graph') paintSidebarMode('notes')
   try {
     if (tab.kind === 'new') showNewTab()
+    else if (tab.kind === 'view' || tab.kind === 'graph') await showModeForTab(tab)
     else if (tab.kind === 'pdf') await openPdf(tab.relPath, { tab: false })
     else if (tab.kind === 'image') await openImage(tab.relPath, { tab: false })
     else if (tab.kind === 'file' || tab.kind === 'binary') await openTextFile(tab.relPath, { tab: false })
@@ -1000,7 +1024,10 @@ async function showNothingOpen(): Promise<void> {
   try {
     const pages = await window.api.wsAllPages()
     if (pages.length > 0) {
-      await newTab()
+      // No tab is open, so Home is not a tab: it is the whole window. The next
+      // click on a recent item or a quick action opens a real tab.
+      showNewTab()
+      paintSidebarMode('notes')
       return
     }
   } catch {
@@ -1014,6 +1041,7 @@ function showNoTabs(): void {
   currentFile = null
   currentImagePath = null
   currentPdfPath = null
+  currentQuizRel = null
   pdfHandle?.destroy()
   pdfHandle = null
   showOnlyPane(null)
@@ -1021,6 +1049,7 @@ function showNoTabs(): void {
   pageLoaderEl.hidden = true
   emptyStateEl.hidden = false
   breadcrumbsEl.innerHTML = ''
+  paintSidebarMode('notes')
 }
 
 // Open a page/PDF/file, reusing an existing tab unless asked for a new one.
@@ -1028,6 +1057,13 @@ async function openRel(relIn: string, kind: string, asNewTab = false): Promise<v
   if (kind === 'new') {
     await newTab()
     return
+  }
+  if (kind === 'view' || kind === 'graph') {
+    const mode = relIn.replace(/^__mode__:/, '') as WorkspaceModeId
+    if (mode in MODE_TITLES) {
+      await openModeTab(mode)
+      return
+    }
   }
   const rel = await normalizeRel(relIn)
   // A `.qz` is always a quiz, whatever route got here (a first-page boot, a
@@ -1100,7 +1136,14 @@ async function restoreTabs(remembered?: { tabs: TabInfo[]; activeTab: number }):
     if (t.kind === 'new') {
       if (keptBlank) continue
       keptBlank = true
-      tabs.push({ relPath: blankTabRel(), kind: 'new', title: 'New tab' })
+      tabs.push({ relPath: blankTabRel(), kind: 'new', title: 'Home' })
+      continue
+    }
+    // Workspace-view tabs have no file behind them; their synthetic path is
+    // the destination. Keep at most one of each.
+    if (t.kind === 'view' || t.kind === 'graph') {
+      if (tabs.some((x) => x.relPath === t.relPath)) continue
+      tabs.push(t)
       continue
     }
     try {
@@ -1151,10 +1194,17 @@ const newTabPane = createNewTabPane({
   recent: () => recentItems,
   open: (item) => void openRel(item.relPath, item.kind),
   createPage: () => void createNewPage('__root__'),
+  openDaily: () => void openDaily(todayKey()),
   openFile: () => {
     void (async () => {
       const picked = await window.api.filePick('Open a file')
       if (picked) await openFileRef(picked.path)
+    })()
+  },
+  openWorkspace: () => {
+    void (async () => {
+      const res = await window.api.wsOpenWorkspace()
+      if (res.ok) await initWorkspace()
     })()
   },
   searchWorkspace: () => openSearch()
@@ -1184,6 +1234,7 @@ function showOnlyPane(el: HTMLElement | null): void {
   imagePaneEl.hidden = true
   textPaneEl.hidden = true
   quizPaneEl.hidden = true
+  modePaneEl.hidden = true
   newTabPane.hide()
   if (el) el.hidden = false
 }
@@ -1196,6 +1247,7 @@ function showNewTab(): void {
   currentFile = null
   currentImagePath = null
   currentPdfPath = null
+  currentQuizRel = null
   releasePdfViewer()
   showOnlyPane(null)
   welcomeEl.hidden = true
@@ -1204,6 +1256,7 @@ function showNewTab(): void {
   ;(document.getElementById('crumb-bar') as HTMLElement).hidden = true
   breadcrumbsEl.innerHTML = ''
   markActiveInTree(null)
+  updatePinButton()
   newTabPane.show()
 }
 
@@ -1217,7 +1270,7 @@ async function newTab(): Promise<void> {
     return
   }
   captureScrollForShownContent()
-  const tab: TabInfo = { relPath: blankTabRel(), kind: 'new', title: 'New tab' }
+  const tab: TabInfo = { relPath: blankTabRel(), kind: 'new', title: 'Home' }
   tabs.push(tab)
   activeTab = tabs.length - 1
   renderTabs()
@@ -1746,28 +1799,26 @@ async function refreshTree(): Promise<void> {
     }
   })
   refreshDailySurfaces()
+  if (sidebarMode === 'templates') void renderTemplates()
+  if (sidebarMode === 'views') renderViewsList()
 }
 
 // ---- daily notes & the sidebar mini-calendar ----
 let calendarHandle: CalendarHandle | null = null
 let dailyNotes: DailyNote[] = []
 
-/** Repaint the Daily list and the month grid from the current workspace tree. */
+/** Repaint the calendar and the pinned list from the current workspace. */
 function refreshDailySurfaces(): void {
   dailyNotes = collectDailyNotes(lastRoot)
-  const panel = document.getElementById('daily-panel')
-  if (panel) {
-    renderDailyList(panel, dailyNotes, {
-      onOpen: (note) => void openRel(note.relPath, 'page'),
-      onCreateToday: () => void openDaily(todayKey())
-    })
-  }
+  refreshPinned()
   if (!calendarHandle) {
     const mount = document.getElementById('mini-calendar')
     if (mount) {
       calendarHandle = setupCalendar(mount, {
         onPick: (date) => void openDaily(date),
-        onToday: () => void openDaily(todayKey())
+        onToday: () => void openDaily(todayKey()),
+        onWeek: (key) => void openWeekly(key),
+        noteDates: () => new Set(dailyNotes.map((n) => n.date))
       })
     }
   } else {
@@ -1783,30 +1834,402 @@ async function openDaily(date: string): Promise<void> {
   await openRel(page.relPath, 'page')
 }
 
-// ---- sidebar view strip (Files / Daily / Agent) ----
-type SidebarView = 'files' | 'daily' | 'agent'
-let sidebarView: SidebarView = 'files'
+// ---- workspace modes (Notes / Templates / Views / Graph / Inbox / Tasks / Media) ----
+type SidebarMode = 'notes' | 'templates' | 'views' | 'graph' | 'inbox' | 'tasks' | 'media'
+let sidebarMode: SidebarMode = 'notes'
+let activeViewId: WorkspaceViewId = 'all'
 
-function paintSidebarView(view: SidebarView): void {
+const MODE_TITLES: Record<WorkspaceModeId, string> = {
+  recent: 'Recently written',
+  pending: 'Pending tasks',
+  exams: 'Exam papers',
+  all: 'All notes',
+  graph: 'Graph',
+  inbox: 'Inbox',
+  tasks: 'Tasks',
+  media: 'Files & media'
+}
+
+const VIEW_DEFS: { id: WorkspaceViewId; title: string; sub: string; icon: IconName }[] = [
+  { id: 'recent', title: 'Recently written', sub: 'Newest changes first', icon: 'clock' },
+  { id: 'pending', title: 'Pending tasks', sub: 'Unchecked boxes by note', icon: 'check' },
+  { id: 'exams', title: 'Exam papers', sub: 'Every .qz paper', icon: 'quiz' },
+  { id: 'all', title: 'All notes', sub: 'The whole workspace', icon: 'table' }
+]
+
+function modeRel(mode: WorkspaceModeId): string {
+  return `__mode__:${mode}`
+}
+
+function tabMode(tab: TabInfo): WorkspaceModeId | null {
+  if (tab.kind === 'graph') return 'graph'
+  if (tab.kind !== 'view') return null
+  const raw = tab.relPath.replace(/^__mode__:/, '')
+  if (raw in MODE_TITLES) return raw as WorkspaceModeId
+  return null
+}
+
+function sidebarModeForMode(mode: WorkspaceModeId): SidebarMode {
+  if (mode === 'recent' || mode === 'pending' || mode === 'exams' || mode === 'all') return 'views'
+  return mode
+}
+
+function paintSidebarMode(mode: SidebarMode): void {
+  sidebarMode = mode
   for (const btn of Array.from(document.querySelectorAll<HTMLElement>('.viewstrip-btn'))) {
-    btn.classList.toggle('is-active', btn.dataset.sideView === view)
+    btn.classList.toggle('is-active', btn.dataset.mode === mode)
+  }
+  const notes = document.getElementById('notes-view')
+  const templates = document.getElementById('templates-view')
+  const views = document.getElementById('views-view')
+  const side = document.getElementById('mode-side-panel')
+  if (notes) notes.hidden = mode !== 'notes'
+  if (templates) templates.hidden = mode !== 'templates'
+  if (views) views.hidden = mode !== 'views'
+  if (side) side.hidden = !['graph', 'inbox', 'tasks', 'media'].includes(mode)
+  if (mode === 'templates') void renderTemplates()
+  if (mode === 'views') renderViewsList()
+  if (['graph', 'inbox', 'tasks', 'media'].includes(mode)) updateModeSidePanel(mode, '')
+}
+
+async function activateSidebarMode(mode: SidebarMode): Promise<void> {
+  if (mode === 'notes') {
+    paintSidebarMode('notes')
+    const tab = tabs[activeTab]
+    if (tab && (tab.kind === 'view' || tab.kind === 'graph')) {
+      const previous = [...tabs].reverse().find((t) => t.kind !== 'view' && t.kind !== 'graph')
+      if (previous) await activateTab(tabs.indexOf(previous))
+      else await newTab()
+    }
+    return
+  }
+  paintSidebarMode(mode)
+  if (mode === 'templates') {
+    // Templates are a way to start a note, not a canvas of their own: return
+    // the main pane to the note you were reading (or Home) while the sidebar
+    // shows the gallery.
+    const tab = tabs[activeTab]
+    if (tab && (tab.kind === 'view' || tab.kind === 'graph')) {
+      const previous = [...tabs].reverse().find((t) => t.kind !== 'view' && t.kind !== 'graph')
+      if (previous) await activateTab(tabs.indexOf(previous))
+      else if (tabs.length === 0) showNewTab()
+      else {
+        tabs = tabs.filter((t) => t.kind !== 'view' && t.kind !== 'graph')
+        activeTab = 0
+        renderTabs()
+        persistTabs()
+        showNewTab()
+      }
+      paintSidebarMode('templates')
+    }
+    return
+  }
+  if (mode === 'views') {
+    await openModeTab(activeViewId)
+    return
+  }
+  await openModeTab(mode as WorkspaceModeId)
+}
+
+async function openModeTab(mode: WorkspaceModeId): Promise<void> {
+  const rel = modeRel(mode)
+  const existing = tabIndexFor(rel)
+  if (existing >= 0 && existing !== activeTab) {
+    captureScrollForShownContent()
+    activeTab = existing
+    renderTabs()
+    persistTabs()
+    await loadTabContent(tabs[existing])
+    return
+  }
+  if (existing >= 0) {
+    // Pressing the active mode again refreshes the projection.
+    await loadTabContent(tabs[existing])
+    return
+  }
+  captureScrollForShownContent()
+  const kind: TabInfo['kind'] = mode === 'graph' ? 'graph' : 'view'
+  const tab: TabInfo = { relPath: rel, kind, title: MODE_TITLES[mode] }
+  tabs.push(tab)
+  activeTab = tabs.length - 1
+  renderTabs()
+  persistTabs()
+  await loadTabContent(tab)
+}
+
+/** Paint one of the whole-canvas workspace projections in the active tab. */
+async function showModeForTab(tab: TabInfo): Promise<void> {
+  const mode = tabMode(tab)
+  if (!mode) return
+  flushSave()
+  currentPage = null
+  currentFile = null
+  currentImagePath = null
+  currentPdfPath = null
+  currentQuizRel = null
+  releasePdfViewer()
+  showOnlyPane(modePaneEl)
+  welcomeEl.hidden = true
+  emptyStateEl.hidden = true
+  pageLoaderEl.hidden = true
+  ;(document.getElementById('crumb-bar') as HTMLElement).hidden = true
+  breadcrumbsEl.innerHTML = ''
+  markActiveInTree(null)
+  updatePinButton()
+  if (mode === 'recent' || mode === 'pending' || mode === 'exams' || mode === 'all') activeViewId = mode
+  paintSidebarMode(sidebarModeForMode(mode))
+  const count = await renderWorkspaceMode(modeBodyEl, mode, {
+    open: (rel, kind) => void openRel(rel, kind),
+    notify: (text) => notify(text),
+    afterChange: () => void refreshTree(),
+    openInboxNote: () => void openRel('Inbox.md', 'page'),
+    summary: (n) => updateModeSidePanel(sidebarModeForMode(mode), String(n))
+  })
+  updateModeSidePanel(sidebarModeForMode(mode), count)
+}
+
+function updateModeSidePanel(mode: SidebarMode, count: string): void {
+  const title = document.getElementById('mode-side-title')
+  const sub = document.getElementById('mode-side-sub')
+  const body = document.getElementById('mode-side-body')
+  if (!title || !sub || !body) return
+  const n = Number(count) || 0
+  title.textContent =
+    mode === 'graph' ? 'Graph' : mode === 'inbox' ? 'Inbox' : mode === 'tasks' ? 'Tasks' : 'Files & media'
+  sub.textContent =
+    mode === 'graph'
+      ? `${n} note${n === 1 ? '' : 's'} mapped. Drag a node to rearrange; click to open.`
+      : mode === 'inbox'
+        ? `${n} active capture${n === 1 ? '' : 's'} waiting for triage.`
+        : mode === 'tasks'
+          ? `${n} task${n === 1 ? '' : 's'} in this filter.`
+          : `${n} item${n === 1 ? '' : 's'} in this filter.`
+  body.replaceChildren()
+  if (mode === 'inbox') {
+    const open = document.createElement('button')
+    open.type = 'button'
+    open.className = 'mode-side-action'
+    open.textContent = 'Open Inbox.md'
+    open.addEventListener('click', () => void openRel('Inbox.md', 'page'))
+    body.appendChild(open)
+  }
+  if (mode === 'graph') {
+    const all = document.createElement('button')
+    all.type = 'button'
+    all.className = 'mode-side-action'
+    all.textContent = 'All notes'
+    all.addEventListener('click', () => void openModeTab('all'))
+    body.appendChild(all)
   }
 }
 
-function setSidebarView(view: SidebarView): void {
-  const files = document.getElementById('files-view')
-  const daily = document.getElementById('daily-panel')
-  const agent = document.getElementById('agent-panel') as HTMLElement | null
-  sidebarView = view
-  if (files) files.hidden = view === 'daily'
-  if (daily) daily.hidden = view !== 'daily'
-  if (view === 'daily') refreshDailySurfaces()
-  if (view === 'agent') {
-    if (agent?.hidden) toggleAgentPanel()
-  } else if (agent && !agent.hidden) {
-    toggleAgentPanel()
+function renderViewsList(): void {
+  const host = document.getElementById('views-list')
+  if (!host) return
+  host.replaceChildren()
+  const activeMode = tabMode(tabs[activeTab] ?? ({} as TabInfo))
+  for (const def of VIEW_DEFS) {
+    const row = document.createElement('button')
+    row.type = 'button'
+    row.className = 'views-row' + (activeMode === def.id ? ' is-active' : '')
+    const icon = document.createElement('span')
+    icon.className = 'views-row-icon'
+    icon.append(iconEl(def.icon, 14))
+    const text = document.createElement('span')
+    text.className = 'views-row-text'
+    const title = document.createElement('span')
+    title.className = 'views-row-title'
+    title.textContent = def.title
+    const sub = document.createElement('span')
+    sub.className = 'views-row-sub'
+    sub.textContent = def.sub
+    text.append(title, sub)
+    row.append(icon, text)
+    row.addEventListener('click', () => {
+      activeViewId = def.id
+      void openModeTab(def.id)
+    })
+    host.appendChild(row)
   }
-  paintSidebarView(view)
+}
+
+// ---- sidebars: pinned items, templates, mode summaries ----
+
+interface PinnedItem {
+  relPath: string
+  title: string
+  kind: string
+  icon?: string
+}
+
+function pinsKey(): string {
+  return `meridiem:pins:${cacheWorkspacePath ?? 'none'}`
+}
+
+function readPins(): PinnedItem[] {
+  try {
+    const raw = localStorage.getItem(pinsKey())
+    const parsed = raw ? (JSON.parse(raw) as PinnedItem[]) : []
+    return Array.isArray(parsed) ? parsed.filter((p) => p && typeof p.relPath === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function writePins(items: PinnedItem[]): void {
+  try {
+    localStorage.setItem(pinsKey(), JSON.stringify(items))
+  } catch {
+    /* private mode / quota: pins are a convenience, never a save */
+  }
+}
+
+function refreshPinned(): void {
+  const block = document.getElementById('pinned-block')
+  const host = document.getElementById('pinned-list')
+  if (!block || !host) return
+  const pins = readPins()
+  block.hidden = pins.length === 0
+  host.replaceChildren()
+  for (const pin of pins) {
+    const row = document.createElement('button')
+    row.type = 'button'
+    row.className = 'pinned-row'
+    const icon = document.createElement('span')
+    icon.className = 'pinned-icon'
+    applyIcon(icon, pin.icon, pin.kind === 'quiz' ? 'quiz' : 'doc', 13)
+    const label = document.createElement('span')
+    label.className = 'pinned-name'
+    label.textContent = pin.title
+    const unpin = document.createElement('span')
+    unpin.className = 'pinned-unpin'
+    unpin.textContent = '×'
+    unpin.title = 'Unpin'
+    unpin.addEventListener('click', (e) => {
+      e.stopPropagation()
+      writePins(readPins().filter((p) => p.relPath !== pin.relPath))
+      refreshPinned()
+      updatePinButton()
+    })
+    row.append(icon, label, unpin)
+    row.title = pin.relPath
+    row.addEventListener('click', () => void openRel(pin.relPath, pin.kind))
+    host.appendChild(row)
+  }
+}
+
+function updatePinButton(): void {
+  const btn = document.getElementById('pin-note-btn') as HTMLButtonElement | null
+  if (!btn) return
+  const rel = currentPage?.relPath
+  const pinned = !!rel && readPins().some((p) => p.relPath === rel)
+  btn.classList.toggle('active', pinned)
+  btn.title = pinned ? 'Unpin from sidebar' : 'Pin to sidebar'
+  btn.disabled = !rel
+}
+
+function togglePinCurrent(): void {
+  if (!currentPage) return
+  const rel = currentPage.relPath
+  const pins = readPins()
+  const existing = pins.find((p) => p.relPath === rel)
+  if (existing) writePins(pins.filter((p) => p.relPath !== rel))
+  else {
+    writePins([
+      ...pins,
+      { relPath: rel, title: currentPage.title, kind: rel.endsWith('.qz') ? 'quiz' : 'page', icon: currentPage.icon }
+    ])
+  }
+  refreshPinned()
+  updatePinButton()
+}
+
+async function renderTemplates(): Promise<void> {
+  const host = document.getElementById('templates-list')
+  if (!host) return
+  host.replaceChildren()
+  const loading = document.createElement('div')
+  loading.className = 'sidebar-empty'
+  loading.textContent = 'Reading templates…'
+  host.appendChild(loading)
+  let templates: { relPath: string; title: string; icon: string; kind: string }[] = []
+  try {
+    const index = await window.api.wsIndex()
+    templates = index
+      .filter((e) => /^Templates\//i.test(e.relPath))
+      .sort((a, b) => a.title.localeCompare(b.title))
+  } catch {
+    /* empty state below */
+  }
+  host.replaceChildren()
+  if (templates.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'sidebar-empty'
+    empty.textContent = 'Put .md or .qz files in a Templates/ folder, or press + to start one.'
+    host.appendChild(empty)
+    return
+  }
+  for (const template of templates) {
+    const row = document.createElement('button')
+    row.type = 'button'
+    row.className = 'template-row'
+    const icon = document.createElement('span')
+    icon.className = 'template-icon'
+    applyIcon(icon, template.icon, template.kind === 'quiz' ? 'quiz' : 'template', 14)
+    const text = document.createElement('span')
+    text.className = 'template-text'
+    const title = document.createElement('span')
+    title.className = 'template-title'
+    title.textContent = template.title
+    const sub = document.createElement('span')
+    sub.className = 'template-sub'
+    sub.textContent = template.kind === 'quiz' ? 'New paper from this exam' : 'New note from this template'
+    text.append(title, sub)
+    row.append(icon, text)
+    row.title = `Create from ${template.relPath}`
+    row.addEventListener('click', () => void useTemplate(template.relPath))
+    host.appendChild(row)
+  }
+}
+
+async function useTemplate(relPath: string): Promise<void> {
+  const page = await window.api.wsUseTemplate({ relPath })
+  if (!page) return
+  await refreshTree()
+  await openRel(page.relPath, page.relPath.toLowerCase().endsWith('.qz') ? 'quiz' : 'page')
+}
+
+async function newTemplate(): Promise<void> {
+  const page = await window.api.wsCreate({ parentRel: 'Templates', title: 'Untitled template' })
+  if (!page) return
+  await refreshTree()
+  await openPageByRel(page.relPath)
+  requestAnimationFrame(() => pageTitleEl.focus())
+}
+
+let toastTimer: number | null = null
+function notify(text: string): void {
+  let toast = document.getElementById('app-toast')
+  if (!toast) {
+    toast = document.createElement('div')
+    toast.id = 'app-toast'
+    toast.className = 'app-toast'
+    document.body.appendChild(toast)
+  }
+  toast.textContent = text
+  toast.classList.add('is-visible')
+  if (toastTimer !== null) window.clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => {
+    toast?.classList.remove('is-visible')
+    toastTimer = null
+  }, 1800)
+}
+
+async function openWeekly(key: string): Promise<void> {
+  const page = await window.api.wsWeekly(key)
+  if (!page) return
+  await refreshTree()
+  await openRel(page.relPath, 'page')
 }
 
 // ---- theme / fonts ----
@@ -2263,11 +2686,6 @@ function toggleAgentPanel(): void {
   ;(document.getElementById('toggle-agent-btn') as HTMLElement).classList.toggle('active', !panel.hidden)
   // A hidden panel must not leave its popovers behind.
   if (panel.hidden) agentPanel?.dismissFloats()
-  // Closing the agent from the titlebar returns the sidebar strip to Files.
-  if (panel.hidden && sidebarView === 'agent') {
-    sidebarView = 'files'
-    paintSidebarView('files')
-  }
   void window.api.setSettings('agentOpen', !panel.hidden)
 }
 
@@ -3803,10 +4221,17 @@ document.getElementById('toggle-sidebar-btn')!.addEventListener('click', () => {
 // ---- Octarine titlebar, sidebar views, quick search, focus mode ----
 document.getElementById('quick-search-btn')!.addEventListener('click', () => openSearch())
 document.getElementById('titlebar-new-note')!.addEventListener('click', () => void createNewPage(null))
-document.getElementById('view-files')!.addEventListener('click', () => setSidebarView('files'))
-document.getElementById('view-daily')!.addEventListener('click', () => setSidebarView('daily'))
-document.getElementById('view-agent')!.addEventListener('click', () => {
-  setSidebarView(sidebarView === 'agent' ? 'files' : 'agent')
+document.getElementById('mode-notes')!.addEventListener('click', () => void activateSidebarMode('notes'))
+document.getElementById('mode-templates')!.addEventListener('click', () => void activateSidebarMode('templates'))
+document.getElementById('mode-views')!.addEventListener('click', () => void activateSidebarMode('views'))
+document.getElementById('mode-graph')!.addEventListener('click', () => void activateSidebarMode('graph'))
+document.getElementById('mode-inbox')!.addEventListener('click', () => void activateSidebarMode('inbox'))
+document.getElementById('mode-tasks')!.addEventListener('click', () => void activateSidebarMode('tasks'))
+document.getElementById('mode-media')!.addEventListener('click', () => void activateSidebarMode('media'))
+document.getElementById('new-template-btn')?.addEventListener('click', () => void newTemplate())
+document.getElementById('pin-note-btn')?.addEventListener('click', () => togglePinCurrent())
+document.getElementById('crumb-focus-btn')?.addEventListener('click', () => {
+  if (!focusMode) toggleFocusMode()
 })
 
 // ⌘K and ⌘P both open the workspace palette, the two shortcuts people already
@@ -3984,6 +4409,8 @@ async function initWorkspace(): Promise<void> {
     // workspace and is only adopted back when it belongs to this one.
     recentItems = []
   }
+  paintSidebarMode('notes')
+  refreshPinned()
   if (!base) {
     showOnlyPane(null)
     welcomeEl.hidden = false
@@ -4048,7 +4475,10 @@ async function initWorkspace(): Promise<void> {
     const firstRel = findFirstPage(tree)
     const restored = await restoreTabs(tabsByWorkspace.get(base))
     if (!restored && firstRel) {
-      await openRel(firstRel, 'page')
+      // No tabs were open when we last left, so the window opens on Home rather
+      // than silently picking a note for the reader.
+      showNewTab()
+      paintSidebarMode('notes')
     } else if (!restored) {
       showOnlyPane(null)
       emptyStateEl.hidden = false
@@ -4397,6 +4827,12 @@ async function init(): Promise<void> {
     onFontChange: (id) => applyPreviewFont(id),
     onCountModeChange: (mode) => setCountMode(mode)
   })
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === ',') {
+      e.preventDefault()
+      settingsApi.show()
+    }
+  })
   restartAgentPanel = () => agentApi.restart()
   // First run: ask for one endpoint + key + model, then wire the agent to it.
   const onboarding = setupOnboarding({
@@ -4407,6 +4843,7 @@ async function init(): Promise<void> {
   })
   await onboarding.maybeShow()
   buildThemeSelect()
+  paintSidebarMode('notes')
   // The calendar is chrome, not workspace content: draw it even before a folder
   // is open so the sidebar always has its footing.
   refreshDailySurfaces()

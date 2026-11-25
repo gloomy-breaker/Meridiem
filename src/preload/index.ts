@@ -18,6 +18,37 @@ export interface WorkspacePage {
   body: string
 }
 
+export interface WorkspaceIndexEntry {
+  relPath: string
+  title: string
+  icon: string
+  kind: 'page' | 'quiz'
+  mtime: number
+}
+
+export interface WorkspaceTaskEntry {
+  relPath: string
+  title: string
+  icon: string
+  line: number
+  text: string
+  checked: boolean
+}
+
+export interface WorkspaceMediaEntry {
+  relPath: string
+  name: string
+  kind: 'image' | 'pdf' | 'file'
+  mtime: number
+  size: number
+}
+
+export interface InboxEntry {
+  line: number
+  text: string
+  checked: boolean
+}
+
 /**
  * One page, flattened so the hidden print host can render it without a
  * workspace of its own. Everything the print stylesheet reads travels with the
@@ -115,6 +146,23 @@ const api = {
   wsCreate: (payload: { parentRel: string | null; title: string }): Promise<WorkspacePage | null> => ipcRenderer.invoke('ws:create', payload),
   /** Open (or create) `Daily/YYYY-MM-DD.md` and return it. */
   wsDaily: (date: string): Promise<WorkspacePage | null> => ipcRenderer.invoke('ws:daily', date),
+  /** Open (or create) `Weekly/YYYY-Www.md` and return it. */
+  wsWeekly: (key: string): Promise<WorkspacePage | null> => ipcRenderer.invoke('ws:weekly', key),
+  wsIndex: (): Promise<WorkspaceIndexEntry[]> => ipcRenderer.invoke('ws:index'),
+  wsTasks: (): Promise<WorkspaceTaskEntry[]> => ipcRenderer.invoke('ws:tasks'),
+  wsToggleTask: (payload: { relPath: string; line: number; checked: boolean }): Promise<boolean> =>
+    ipcRenderer.invoke('ws:toggle-task', payload),
+  wsGraph: (): Promise<{
+    nodes: { id: string; title: string; icon: string; kind: 'page' | 'quiz' }[]
+    edges: { source: string; target: string }[]
+  }> => ipcRenderer.invoke('ws:graph'),
+  wsMedia: (): Promise<WorkspaceMediaEntry[]> => ipcRenderer.invoke('ws:media'),
+  wsInbox: (): Promise<InboxEntry[]> => ipcRenderer.invoke('ws:inbox'),
+  wsInboxAdd: (text: string): Promise<InboxEntry[]> => ipcRenderer.invoke('ws:inbox-add', text),
+  wsInboxToggle: (payload: { line: number; checked: boolean }): Promise<InboxEntry[]> =>
+    ipcRenderer.invoke('ws:inbox-toggle', payload),
+  wsUseTemplate: (payload: { relPath: string; title?: string }): Promise<WorkspacePage | null> =>
+    ipcRenderer.invoke('ws:use-template', payload),
   wsDelete: (relPath: string): Promise<boolean> => ipcRenderer.invoke('ws:delete', relPath),
   wsResolveLink: (linkText: string, fromDir?: string): Promise<WorkspacePage | null> => ipcRenderer.invoke('ws:resolve-link', linkText, fromDir),
   wsAllPages: (): Promise<{ relPath: string; title: string; icon: string }[]> => ipcRenderer.invoke('ws:all-pages'),

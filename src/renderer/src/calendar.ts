@@ -42,11 +42,20 @@ function keyFor(year: number, month: number, day: number): string {
 
 /** ISO-8601 week number (weeks start Monday, week 1 contains Jan 4). */
 export function isoWeek(year: number, month: number, day: number): number {
-  const d = new Date(Date.UTC(year, month, day))
+  return isoWeekInfo(new Date(year, month, day)).week
+}
+
+/** The ISO week *and its week-year* — late December can belong to week 1 of
+ *  the next year, and early January to week 52/53 of the previous one. */
+export function isoWeekInfo(date: Date): { year: number; week: number } {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
   const dayNum = d.getUTCDay() || 7
   d.setUTCDate(d.getUTCDate() + 4 - dayNum)
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+  return {
+    year: d.getUTCFullYear(),
+    week: Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+  }
 }
 
 /**
@@ -71,6 +80,10 @@ export function collectDailyNotes(root: CalendarNode | null): DailyNote[] {
     .sort((a, b) => b.date.localeCompare(a.date))
 }
 
+export function weekKey(year: number, week: number): string {
+  return `${year}-W${String(week).padStart(2, '0')}`
+}
+
 export function formatDailyDate(key: string): string {
   const [y, m, d] = key.split('-').map(Number)
   if (!y || !m || !d) return key
@@ -88,7 +101,14 @@ export interface CalendarHandle {
 
 export function setupCalendar(
   host: HTMLElement,
-  opts: { onPick: (date: string) => void; onToday?: () => void }
+  opts: {
+    onPick: (date: string) => void
+    onToday?: () => void
+    /** ISO keys (`YYYY-Www`) for weekly notes that already exist. */
+    onWeek?: (key: string) => void
+    /** Daily-note dates, for the little dot under a day. */
+    noteDates?: () => Set<string>
+  }
 ): CalendarHandle {
   const now = new Date()
   // The month being browsed. Starts on the current month.
@@ -97,6 +117,7 @@ export function setupCalendar(
 
   const mount = (): void => {
     const today = todayKey()
+    const noted = opts.noteDates?.() ?? new Set<string>()
     host.innerHTML = ''
 
     const bar = document.createElement('div')
@@ -180,12 +201,16 @@ export function setupCalendar(
 
     for (let row = 0; row < 6; row++) {
       const rowStart = new Date(start.getFullYear(), start.getMonth(), start.getDate() + row * 7)
-      const wn = document.createElement('span')
-      wn.className = 'cal-wn'
-      wn.textContent = String(
-        isoWeek(rowStart.getFullYear(), rowStart.getMonth(), rowStart.getDate())
-      )
-      wn.title = `Week ${wn.textContent}`
+      const weekInfo = isoWeekInfo(rowStart)
+      const weekNumber = weekInfo.week
+      const wn = document.createElement(opts.onWeek ? 'button' : 'span')
+      wn.className = 'cal-wn' + (opts.onWeek ? ' cal-wn-btn' : '')
+      wn.textContent = String(weekNumber)
+      wn.title = `Week ${weekNumber} — open the weekly note`
+      if (wn instanceof HTMLButtonElement) {
+        wn.type = 'button'
+        wn.addEventListener('click', () => opts.onWeek?.(weekKey(weekInfo.year, weekNumber)))
+      }
       grid.appendChild(wn)
 
       for (let i = 0; i < 7; i++) {
@@ -199,6 +224,7 @@ export function setupCalendar(
         btn.dataset.date = key
         if (d.getMonth() !== viewMonth) btn.classList.add('is-outside')
         if (key === today) btn.classList.add('is-today')
+        if (noted.has(key)) btn.classList.add('has-note')
         btn.addEventListener('click', () => opts.onPick(key))
         grid.appendChild(btn)
       }

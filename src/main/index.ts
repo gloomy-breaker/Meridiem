@@ -52,7 +52,16 @@ import {
   createWorkspace,
   validateWorkspace,
   convertToWorkspace,
-  convertLoosePage
+  convertLoosePage,
+  workspaceIndex,
+  workspaceTasks,
+  toggleTask,
+  workspaceGraph,
+  workspaceMedia,
+  readInbox,
+  addInboxItem,
+  toggleInboxItem,
+  serializePageFile
 } from './workspace'
 import { logLine } from './log'
 // Type-only: the shape the renderer sends for a print job. Erased at compile
@@ -958,6 +967,89 @@ function registerWorkspaceHandlers(): void {
     const root = getWorkspace()
     if (!root) return relPath
     return convertLoosePage(root, relPath)
+  })
+  ipcMain.handle('ws:weekly', async (_e, key: unknown) => {
+    const root = getWorkspace()
+    if (!root) return null
+    const clean = typeof key === 'string' && /^\d{4}-W\d{2}$/.test(key) ? key : null
+    if (!clean) return null
+    const relPath = `Weekly/${clean}.md`
+    const abs = join(root, relPath)
+    await fsMkdir(join(root, 'Weekly'), { recursive: true })
+    try {
+      const existing = await readPage(abs, relPath)
+      if (existing) return existing
+    } catch {
+      /* not created yet */
+    }
+    await savePage(abs, clean, '', '')
+    return { relPath, absolutePath: abs, title: clean, icon: '', body: '' }
+  })
+  // A template is a file you copy, not a file you edit. Markdown templates
+  // become ordinary root pages; .qz templates become root papers with the same
+  // body, so an exam template is never opened in the page editor.
+  ipcMain.handle('ws:use-template', async (_e, payload: { relPath: string; title?: string }) => {
+    const root = getWorkspace()
+    if (!root) return null
+    const srcAbs = join(root, payload.relPath)
+    const raw = await fsReadFile(srcAbs, 'utf-8')
+    const parsed = parsePageFile(raw, payload.relPath.split('/').pop() || 'Template')
+    const title = (payload.title || parsed.title || 'Untitled').trim()
+    if (/\.qz$/i.test(payload.relPath)) {
+      const base = title.replace(/[/\\:*?"<>|]/g, '-').replace(/\.+$/g, '') || 'Untitled paper'
+      let name = base
+      let n = 2
+      while (true) {
+        try {
+          await fsAccess(join(root, `${name}.qz`))
+          name = `${base} ${n++}`
+        } catch {
+          break
+        }
+      }
+      const relPath = `${name}.qz`
+      const abs = join(root, relPath)
+      await fsMkdir(dirname(abs), { recursive: true })
+      await fsp(abs, serializePageFile(title, parsed.icon, parsed.body), 'utf-8')
+      return { relPath, absolutePath: abs, title, icon: parsed.icon, body: parsed.body }
+    }
+    const page = await createPage(root, null, title)
+    await savePage(page.absolutePath, title, parsed.icon, parsed.body)
+    return { ...page, title, icon: parsed.icon, body: parsed.body }
+  })
+  // Workspace-mode projections (Notes views, graph, tasks, media, Inbox).
+  ipcMain.handle('ws:index', async () => {
+    const root = getWorkspace()
+    return root ? workspaceIndex(root) : []
+  })
+  ipcMain.handle('ws:tasks', async () => {
+    const root = getWorkspace()
+    return root ? workspaceTasks(root) : []
+  })
+  ipcMain.handle('ws:toggle-task', async (_e, payload: { relPath: string; line: number; checked: boolean }) => {
+    const root = getWorkspace()
+    if (!root) return false
+    return toggleTask(root, payload.relPath, payload.line, payload.checked)
+  })
+  ipcMain.handle('ws:graph', async () => {
+    const root = getWorkspace()
+    return root ? workspaceGraph(root) : { nodes: [], edges: [] }
+  })
+  ipcMain.handle('ws:media', async () => {
+    const root = getWorkspace()
+    return root ? workspaceMedia(root) : []
+  })
+  ipcMain.handle('ws:inbox', async () => {
+    const root = getWorkspace()
+    return root ? readInbox(root) : []
+  })
+  ipcMain.handle('ws:inbox-add', async (_e, text: string) => {
+    const root = getWorkspace()
+    return root ? addInboxItem(root, text) : []
+  })
+  ipcMain.handle('ws:inbox-toggle', async (_e, payload: { line: number; checked: boolean }) => {
+    const root = getWorkspace()
+    return root ? toggleInboxItem(root, payload.line, payload.checked) : []
   })
   ipcMain.handle('ws:delete', async (_e, relPath: string) => {
     const root = getWorkspace()

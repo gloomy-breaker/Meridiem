@@ -16,6 +16,42 @@ export interface WorkspacePage {
   body: string
 }
 
+export interface WorkspaceIndexEntry {
+  relPath: string
+  title: string
+  icon: string
+  kind: 'page' | 'quiz'
+  mtime: number
+}
+
+export interface WorkspaceTaskEntry {
+  relPath: string
+  title: string
+  icon: string
+  line: number
+  text: string
+  checked: boolean
+}
+
+export interface WorkspaceGraphData {
+  nodes: { id: string; title: string; icon: string; kind: 'page' | 'quiz' }[]
+  edges: { source: string; target: string }[]
+}
+
+export interface WorkspaceMediaEntry {
+  relPath: string
+  name: string
+  kind: 'image' | 'pdf' | 'file'
+  mtime: number
+  size: number
+}
+
+export interface InboxEntry {
+  line: number
+  text: string
+  checked: boolean
+}
+
 export interface PagePrintPayload {
   markdown: string
   baseDir: string | null
@@ -121,6 +157,17 @@ export interface Api {
   wsCreate: (payload: { parentRel: string | null; title: string }) => Promise<WorkspacePage | null>
   /** Open (or create) `Daily/YYYY-MM-DD.md` and return it. */
   wsDaily: (date: string) => Promise<WorkspacePage | null>
+  /** Open (or create) `Weekly/YYYY-Www.md` and return it. */
+  wsWeekly: (key: string) => Promise<WorkspacePage | null>
+  wsIndex: () => Promise<WorkspaceIndexEntry[]>
+  wsTasks: () => Promise<WorkspaceTaskEntry[]>
+  wsToggleTask: (payload: { relPath: string; line: number; checked: boolean }) => Promise<boolean>
+  wsGraph: () => Promise<WorkspaceGraphData>
+  wsMedia: () => Promise<WorkspaceMediaEntry[]>
+  wsInbox: () => Promise<InboxEntry[]>
+  wsInboxAdd: (text: string) => Promise<InboxEntry[]>
+  wsInboxToggle: (payload: { line: number; checked: boolean }) => Promise<InboxEntry[]>
+  wsUseTemplate: (payload: { relPath: string; title?: string }) => Promise<WorkspacePage | null>
   wsDelete: (relPath: string) => Promise<boolean>
   wsResolveLink: (linkText: string, fromDir?: string) => Promise<WorkspacePage | null>
   wsAllPages: () => Promise<{ relPath: string; title: string; icon: string }[]>

@@ -546,3 +546,282 @@ export async function fileForTitle(root: string, title: string): Promise<string 
 }
 
 export { dirname, relative }
+
+// ---------------------------------------------------------------------------
+// Workspace index, tasks, graph, media and Inbox
+// ---------------------------------------------------------------------------
+// These are read-mostly projections used by the workspace modes in the
+// renderer. They walk the folder directly rather than going through the page
+// tree: a view should stay correct when a file is added outside the app, and
+// the tree is organised by links rather than by disk layout.
+
+export interface WorkspaceIndexEntry {
+  relPath: string
+  title: string
+  icon: string
+  kind: 'page' | 'quiz'
+  mtime: number
+}
+
+const WALK_SKIP = new Set(['.git', '.yestion', 'node_modules', '.DS_Store'])
+
+async function walkWorkspace(
+  root: string,
+  visit: (abs: string, rel: string, stat: import('node:fs').Stats) => Promise<void> | void,
+  rel = ''
+): Promise<void> {
+  let entries
+  try {
+    entries = await fs.readdir(join(root, rel), { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.') || WALK_SKIP.has(entry.name)) continue
+    const childRel = rel ? `${rel}/${entry.name}` : entry.name
+    const abs = join(root, childRel)
+    if (entry.isDirectory()) {
+      await walkWorkspace(root, visit, childRel)
+      continue
+    }
+    try {
+      await visit(abs, childRel, await fs.stat(abs))
+    } catch {
+      /* a file that vanished mid-walk is not an error */
+    }
+  }
+}
+
+/** Every markdown page and `.qz` paper, with its disk modification time. */
+export async function workspaceIndex(root: string): Promise<WorkspaceIndexEntry[]> {
+  const out: WorkspaceIndexEntry[] = []
+  await walkWorkspace(root, async (abs, rel, stat) => {
+    const ext = extname(rel).toLowerCase()
+    if (ext !== '.md' && ext !== '.qz') return
+    const isIndex = basename(rel).toLowerCase() === 'index.md'
+    const fallback = isIndex
+      ? rel.split('/').filter(Boolean).slice(-2, -1)[0] || 'Untitled'
+      : basename(rel).replace(/\.[^.]+$/, '')
+    const parsed = parsePageFile(await fs.readFile(abs, 'utf-8'), fallback)
+    out.push({
+      relPath: rel.replace(/\\/g, '/'),
+      title: parsed.title,
+      icon: parsed.icon || (ext === '.qz' ? QUIZ_ICON : ''),
+      kind: ext === '.qz' ? 'quiz' : 'page',
+      mtime: stat.mtimeMs
+    })
+  })
+  return out.sort((a, b) => a.relPath.localeCompare(b.relPath))
+}
+
+export interface WorkspaceTask {
+  relPath: string
+  title: string
+  icon: string
+  /** 1-based line number in the file as it exists on disk. */
+  line: number
+  text: string
+  checked: boolean
+}
+
+const TASK_LINE = /^(\s*[-*]\s+)\[([ xX])\]\s+(.*)$/
+const TASK_SKIP_DIR = /(^|\/)(Templates|Bin)\//i
+
+/** Every `- [ ]` / `- [x]` in the workspace, with its exact source line. */
+export async function workspaceTasks(root: string): Promise<WorkspaceTask[]> {
+  const index = await workspaceIndex(root)
+  const out: WorkspaceTask[] = []
+  for (const entry of index) {
+    if (entry.kind !== 'page') continue
+    if (TASK_SKIP_DIR.test(entry.relPath)) continue
+    let raw = ''
+    try {
+      raw = await fs.readFile(join(root, entry.relPath), 'utf-8')
+    } catch {
+      continue
+    }
+    const lines = raw.split(/\r?\n/)
+    lines.forEach((line, i) => {
+      const m = TASK_LINE.exec(line)
+      if (!m) return
+      out.push({
+        relPath: entry.relPath,
+        title: entry.title,
+        icon: entry.icon,
+        line: i + 1,
+        text: m[3].trim(),
+        checked: m[2].toLowerCase() === 'x'
+      })
+    })
+  }
+  return out
+}
+
+/** Flip one task's checkbox without rewriting a single other byte. */
+export async function toggleTask(
+  root: string,
+  relPath: string,
+  line: number,
+  checked: boolean
+): Promise<boolean> {
+  const abs = join(root, relPath)
+  let raw: string
+  try {
+    raw = await fs.readFile(abs, 'utf-8')
+  } catch {
+    return false
+  }
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n'
+  const lines = raw.split(/\r?\n/)
+  const i = line - 1
+  if (i < 0 || i >= lines.length || !TASK_LINE.test(lines[i])) return false
+  lines[i] = lines[i].replace(/\[[ xX]\]/, checked ? '[x]' : '[ ]')
+  await fs.writeFile(abs, lines.join(eol), 'utf-8')
+  return true
+}
+
+export interface WorkspaceGraphNode {
+  id: string
+  title: string
+  icon: string
+  kind: 'page' | 'quiz'
+}
+
+export interface WorkspaceGraphEdge {
+  source: string
+  target: string
+}
+
+/** Pages as nodes, `[[wikilinks]]` as edges. Unresolved links are dropped. */
+export async function workspaceGraph(root: string): Promise<{
+  nodes: WorkspaceGraphNode[]
+  edges: WorkspaceGraphEdge[]
+}> {
+  const index = await workspaceIndex(root)
+  const visible = index.filter((e) => !TASK_SKIP_DIR.test(e.relPath))
+  const byTitle = new Map<string, string>()
+  const byBase = new Map<string, string>()
+  for (const entry of visible) {
+    byTitle.set(entry.title.trim().toLowerCase(), entry.relPath)
+    const base = basename(entry.relPath).replace(/\.(md|qz)$/i, '')
+    byBase.set(base.toLowerCase(), entry.relPath)
+    const folder = entry.relPath.replace(/\/?index\.md$/i, '').replace(/\.(md|qz)$/i, '')
+    byBase.set(folder.split('/').pop()!.toLowerCase(), entry.relPath)
+  }
+  const resolve = (raw: string): string | null => {
+    const target = raw.trim().toLowerCase()
+    if (!target) return null
+    return byTitle.get(target) ?? byBase.get(target) ?? null
+  }
+
+  const nodes: WorkspaceGraphNode[] = visible.map((e) => ({
+    id: e.relPath,
+    title: e.title,
+    icon: e.icon,
+    kind: e.kind
+  }))
+  const edges: WorkspaceGraphEdge[] = []
+  const seen = new Set<string>()
+  for (const entry of visible) {
+    let raw = ''
+    try {
+      raw = await fs.readFile(join(root, entry.relPath), 'utf-8')
+    } catch {
+      continue
+    }
+    const body = parsePageFile(raw, entry.title).body
+    for (const match of body.matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g)) {
+      const target = resolve(match[1])
+      if (!target || target === entry.relPath) continue
+      const key = `${entry.relPath}\u0000${target}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      edges.push({ source: entry.relPath, target })
+    }
+  }
+  return { nodes, edges }
+}
+
+export interface WorkspaceMediaEntry {
+  relPath: string
+  name: string
+  kind: 'image' | 'pdf' | 'file'
+  mtime: number
+  size: number
+}
+
+/** Images, PDFs and other files, for the Files & Media mode. */
+export async function workspaceMedia(root: string): Promise<WorkspaceMediaEntry[]> {
+  const out: WorkspaceMediaEntry[] = []
+  await walkWorkspace(root, (_abs, rel, stat) => {
+    if (/^Bin\//i.test(rel)) return
+    const ext = extname(rel).toLowerCase()
+    if (ext === '.md' || ext === '.qz' || ext === '.markdown') return
+    const kind = ext === '.pdf' ? 'pdf' : IMAGE_EXTENSIONS.has(ext) ? 'image' : 'file'
+    out.push({ relPath: rel, name: basename(rel), kind, mtime: stat.mtimeMs, size: stat.size })
+  })
+  return out.sort((a, b) => b.mtime - a.mtime)
+}
+
+export interface InboxItem {
+  /** 1-based line in Inbox.md. */
+  line: number
+  text: string
+  checked: boolean
+}
+
+const INBOX_FILE = 'Inbox.md'
+const INBOX_SEED = '# Inbox\n\n'
+
+async function readInboxRaw(root: string): Promise<string> {
+  const abs = join(root, INBOX_FILE)
+  try {
+    return await fs.readFile(abs, 'utf-8')
+  } catch {
+    await fs.writeFile(abs, INBOX_SEED, 'utf-8')
+    return INBOX_SEED
+  }
+}
+
+function parseInbox(raw: string): InboxItem[] {
+  const out: InboxItem[] = []
+  raw.split(/\r?\n/).forEach((line, i) => {
+    const m = TASK_LINE.exec(line)
+    if (!m) return
+    out.push({ line: i + 1, text: m[3].trim(), checked: m[2].toLowerCase() === 'x' })
+  })
+  return out
+}
+
+export async function readInbox(root: string): Promise<InboxItem[]> {
+  return parseInbox(await readInboxRaw(root))
+}
+
+export async function addInboxItem(root: string, text: string): Promise<InboxItem[]> {
+  const clean = text.trim()
+  if (!clean) return readInbox(root)
+  const raw = await readInboxRaw(root)
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n'
+  const separator = raw.endsWith(eol) ? '' : eol
+  await fs.writeFile(join(root, INBOX_FILE), `${raw}${separator}- [ ] ${clean}${eol}`, 'utf-8')
+  return readInbox(root)
+}
+
+export async function toggleInboxItem(
+  root: string,
+  line: number,
+  checked: boolean
+): Promise<InboxItem[]> {
+  const abs = join(root, INBOX_FILE)
+  const raw = await readInboxRaw(root)
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n'
+  const lines = raw.split(/\r?\n/)
+  const i = line - 1
+  if (i >= 0 && i < lines.length && TASK_LINE.test(lines[i])) {
+    lines[i] = lines[i].replace(/\[[ xX]\]/, checked ? '[x]' : '[ ]')
+    await fs.writeFile(abs, lines.join(eol), 'utf-8')
+  }
+  return readInbox(root)
+}
+
+export { INBOX_FILE }
